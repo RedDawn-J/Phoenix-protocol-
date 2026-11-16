@@ -1,7 +1,6 @@
 # Golden eval harness
 
-Two scripts that let you baseline any model against J's golden set from a
-terminal, no Emergent inference required.
+Two scripts that let you baseline any model against J's golden set from a terminal, no Emergent inference required. This is an evaluation workflow, separate from the interactive local chat harness in [`docs/HEADLESS_CLI.md`](../docs/HEADLESS_CLI.md).
 
 ## Prereqs
 
