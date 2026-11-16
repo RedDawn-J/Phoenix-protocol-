@@ -1,114 +1,111 @@
-"""Tests for the standalone J CLI harness."""
-from __future__ import annotations
+# J Headless CLI and Local UI
 
-import io
-import json
-import unittest
-from unittest.mock import patch
-from urllib.error import HTTPError
+Run J without the React frontend, FastAPI backend, sign-in flow, or hosted AI API. The harness uses only Python's standard library. The local browser UI talks to a local OpenAI-compatible model endpoint, normally Ollama, through a loopback-only Python server.
 
-from scripts import j_cli
+## Requirements
 
+- Python 3.10 or newer.
+- A local OpenAI-compatible model server such as Ollama. The inference runtime and model are installed separately; the harness itself has no Python package dependencies.
 
-class FakeResponse:
-    def __init__(self, body: dict):
-        self.body = json.dumps(body).encode("utf-8")
+For Ollama, start its service and download a model once:
 
-    def __enter__(self) -> "FakeResponse":
-        return self
+```bash
+ollama pull qwen2.5:7b
+ollama serve
+```
 
-    def __exit__(self, exc_type, exc_value, traceback) -> None:
-        return None
+## Browser UI
 
-    def read(self) -> bytes:
-        return self.body
+From the repository root, start the UI server:
 
+```bash
+python scripts/j_ui.py
+```
 
-class HeadlessCliTests(unittest.TestCase):
-    def test_build_messages_includes_system_history_and_user(self) -> None:
-        history = [{"role": "assistant", "content": "Earlier answer"}]
-        messages = j_cli._build_messages("J rules", history, "New prompt")
+Open <http://127.0.0.1:8765>. The server binds to loopback by default and the model endpoint is also restricted to loopback; it is not exposed to your network.
 
-        self.assertEqual(messages, [
-            {"role": "system", "content": "J rules"},
-            {"role": "assistant", "content": "Earlier answer"},
-            {"role": "user", "content": "New prompt"},
-        ])
+Choose a workspace root when starting the UI if you want to browse and attach files:
 
-    def test_resolve_tool_call_parses_json_payload(self) -> None:
-        parsed = j_cli._resolve_tool_call('{"tool": "read_file", "args": {"path": "notes.txt"}}')
-        self.assertEqual(parsed, ("read_file", {"path": "notes.txt"}))
+```bash
+python scripts/j_ui.py --workspace /path/to/your/project
+```
 
-    def test_resolve_tool_call_parses_simple_call_style(self) -> None:
-        parsed = j_cli._resolve_tool_call("CALL read_file path=README.md start_line=0")
-        self.assertEqual(parsed[0], "read_file")
-        self.assertEqual(parsed[1]["path"], "README.md")
-        self.assertEqual(parsed[1]["start_line"], "0")
+The UI includes local conversation history, model selection, connection status, file browsing, file attachments, and responsive chat layout. Conversation history is stored in the browser's local storage. Attached file contents are sent to the configured local model endpoint as conversation context.
 
-    @patch("scripts.j_cli.urlopen")
-    def test_call_model_sends_chat_request_and_reads_reply(self, mocked_urlopen) -> None:
-        mocked_urlopen.return_value = FakeResponse({
-            "choices": [{"message": {"content": "J is ready."}}]
-        })
+To use another local OpenAI-compatible endpoint or model:
 
-        reply = j_cli.call_model(
-            "http://127.0.0.1:11434/v1/chat/completions",
-            "qwen2.5:7b",
-            "local-token",
-            [{"role": "user", "content": "status"}],
-            15,
-        )
+```bash
+J_CLI_ENDPOINT=http://127.0.0.1:11434/v1/chat/completions \
+J_CLI_MODEL=qwen2.5:7b \
+python scripts/j_ui.py --workspace .
+```
 
-        self.assertEqual(reply, "J is ready.")
-        request = mocked_urlopen.call_args.args[0]
-        self.assertEqual(request.get_method(), "POST")
-        self.assertEqual(request.get_header("Authorization"), "Bearer local-token")
-        self.assertEqual(json.loads(request.data)["model"], "qwen2.5:7b")
+Press `Ctrl+C` in the server terminal to stop it.
 
-    @patch("scripts.j_cli.urlopen")
-    def test_call_model_reports_http_error(self, mocked_urlopen) -> None:
-        mocked_urlopen.side_effect = HTTPError(
-            "http://localhost", 401, "Unauthorized", {}, io.BytesIO(b"bad token")
-        )
+## CLI usage
 
-        with self.assertRaisesRegex(j_cli.HarnessError, "HTTP 401: bad token"):
-            j_cli.call_model("http://localhost", "model", "", [], 10)
+One-shot prompt:
 
-    @patch("scripts.j_cli.urlopen")
-    @patch("sys.stdout", new_callable=io.StringIO)
-    def test_main_emits_machine_readable_one_shot(self, stdout, mocked_urlopen) -> None:
-        mocked_urlopen.return_value = FakeResponse({
-            "choices": [{"message": {"content": "ready"}}]
-        })
-        prompt_file = io.StringIO("unused")
-        prompt_file.isatty = lambda: True
-        with patch("sys.stdin", prompt_file):
-            exit_code = j_cli.main([
-                "--message", "status", "--no-system-prompt", "--json"
-            ])
+```bash
+python scripts/j_cli.py --message "Explain the project structure"
+```
 
-        self.assertEqual(exit_code, 0)
-        self.assertEqual(json.loads(stdout.getvalue()), {
-            "model": j_cli.DEFAULT_MODEL,
-            "response": "ready",
-        })
+Pipe a prompt from stdin:
 
-    def test_main_rejects_empty_prompt(self) -> None:
-        stderr = io.StringIO()
-        with patch("sys.stderr", stderr):
-            with self.assertRaises(SystemExit):
-                j_cli.main(["--message", "   "])
+```bash
+printf '%s\n' "Summarize this repo" | python scripts/j_cli.py
+```
 
-    def test_run_command_tool_requires_shell_enablement(self) -> None:
-        result = j_cli.execute_local_tool(
-            "run_command",
-            {"command": "echo hello"},
-            ".",
-            allow_shell=False,
-            allow_write=True,
-        )
-        self.assertIn("ERROR: shell execution is disabled", result)
+Interactive REPL:
 
+```bash
+python scripts/j_cli.py
+```
 
-if __name__ == "__main__":
-    unittest.main()
+Enter `/clear` to clear the in-memory conversation or `/exit` to leave. `--json` emits machine-readable output:
+
+```bash
+python scripts/j_cli.py --message "Return READY." --json
+```
+
+## Local CLI tool mode
+
+The command-line harness can browse and read the selected workspace. Writes and shell commands remain off unless explicitly enabled:
+
+```bash
+python scripts/j_cli.py --tool-mode --workspace . --message "Inspect the project and summarize its structure"
+```
+
+To enable file writes and shell commands for a trusted local task, pass the corresponding explicit flags:
+
+```bash
+python scripts/j_cli.py --tool-mode --workspace . --allow-write --allow-shell --message "Run the project tests and report the result"
+```
+
+Tools available in CLI tool mode: `list_dir`, `read_file`, `write_file`, `run_command`, `grep`, and `find_files`. Use `--max-tool-steps` to bound the number of tool rounds.
+
+## Configuration
+
+| Setting | Default | Description |
+|---|---|---|
+| `J_CLI_ENDPOINT` / `--endpoint` | `http://127.0.0.1:11434/v1/chat/completions` | Local OpenAI-compatible endpoint |
+| `J_CLI_MODEL` / `--model` | `qwen2.5:7b` | Model identifier |
+| `J_CLI_API_KEY` / `--api-key` | empty | Optional bearer token for the local endpoint |
+| `--system-prompt` | repository `AGENTS.md` | Alternate system prompt file |
+| `--no-system-prompt` | off | Omit the system message in CLI mode |
+| `--timeout` | 120 seconds | Per-request timeout |
+
+## Scope and limits
+
+- “No outside dependency” means no hosted backend/API and no third-party Python package. A local model runtime and model weights are still required for inference.
+- The browser UI is chat-and-context only; the CLI tool mode is separate. The UI does not execute shell commands or modify workspace files.
+- The UI limits workspace browsing to the root provided at startup and caps individual context files at 200 KB.
+- For golden-set evaluation, see [`scripts/EVAL_HARNESS.md`](../scripts/EVAL_HARNESS.md).
+
+## Tests
+
+Run the dependency-free CLI tests from the repository root:
+
+```bash
+python -m unittest tests.test_j_cli
+```
