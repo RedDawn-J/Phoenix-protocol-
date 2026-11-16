@@ -1,101 +1,114 @@
-# J Headless CLI
+"""Tests for the standalone J CLI harness."""
+from __future__ import annotations
 
-Run J from a terminal or automation job without starting the React frontend, FastAPI server, or MongoDB. The harness sends chat-completions requests to a local OpenAI-compatible endpoint; by default that is Ollama on `127.0.0.1:11434`.
+import io
+import json
+import unittest
+from unittest.mock import patch
+from urllib.error import HTTPError
 
-This is a local model chat harness, not a local copy of the Gauntlet agent runtime. It does not execute tools, change workspace files, access the backend database, or invoke the hosted API. The repo's existing `scripts/eval_run.py` remains the golden-set evaluation runner.
+from scripts import j_cli
 
-## Requirements
 
-- Python 3.10 or newer.
-- A local OpenAI-compatible model server. Ollama is the default endpoint. For Ollama, start its service and pull a model before running the harness.
-- No additional Python package; the client uses the standard library.
+class FakeResponse:
+    def __init__(self, body: dict):
+        self.body = json.dumps(body).encode("utf-8")
 
-Example Ollama setup:
+    def __enter__(self) -> "FakeResponse":
+        return self
 
-```bash
-ollama pull qwen2.5:7b
-ollama serve
-```
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        return None
 
-## One-shot prompt
+    def read(self) -> bytes:
+        return self.body
 
-From the repository root:
 
-```bash
-python scripts/j_cli.py --message "Explain the project structure"
-```
+class HeadlessCliTests(unittest.TestCase):
+    def test_build_messages_includes_system_history_and_user(self) -> None:
+        history = [{"role": "assistant", "content": "Earlier answer"}]
+        messages = j_cli._build_messages("J rules", history, "New prompt")
 
-The repository `AGENTS.md` is loaded as the system prompt by default. Override the model or endpoint when your local server uses different values:
+        self.assertEqual(messages, [
+            {"role": "system", "content": "J rules"},
+            {"role": "assistant", "content": "Earlier answer"},
+            {"role": "user", "content": "New prompt"},
+        ])
 
-```bash
-python scripts/j_cli.py \
-  --endpoint http://127.0.0.1:11434/v1/chat/completions \
-  --model qwen2.5:7b \
-  --message "Summarize this specification"
-```
+    def test_resolve_tool_call_parses_json_payload(self) -> None:
+        parsed = j_cli._resolve_tool_call('{"tool": "read_file", "args": {"path": "notes.txt"}}')
+        self.assertEqual(parsed, ("read_file", {"path": "notes.txt"}))
 
-Pass a prompt over stdin for scripts and pipelines:
+    def test_resolve_tool_call_parses_simple_call_style(self) -> None:
+        parsed = j_cli._resolve_tool_call("CALL read_file path=README.md start_line=0")
+        self.assertEqual(parsed[0], "read_file")
+        self.assertEqual(parsed[1]["path"], "README.md")
+        self.assertEqual(parsed[1]["start_line"], "0")
 
-```bash
-cat task.txt | python scripts/j_cli.py
-```
+    @patch("scripts.j_cli.urlopen")
+    def test_call_model_sends_chat_request_and_reads_reply(self, mocked_urlopen) -> None:
+        mocked_urlopen.return_value = FakeResponse({
+            "choices": [{"message": {"content": "J is ready."}}]
+        })
 
-Or omit `--message` in a terminal to start an interactive REPL:
+        reply = j_cli.call_model(
+            "http://127.0.0.1:11434/v1/chat/completions",
+            "qwen2.5:7b",
+            "local-token",
+            [{"role": "user", "content": "status"}],
+            15,
+        )
 
-```bash
-python scripts/j_cli.py
-```
+        self.assertEqual(reply, "J is ready.")
+        request = mocked_urlopen.call_args.args[0]
+        self.assertEqual(request.get_method(), "POST")
+        self.assertEqual(request.get_header("Authorization"), "Bearer local-token")
+        self.assertEqual(json.loads(request.data)["model"], "qwen2.5:7b")
 
-Enter `/clear` to discard the current in-memory conversation or `/exit` to leave. Conversation history is kept only for the lifetime of that process; it is not written to disk or sent to the Gauntlet database.
+    @patch("scripts.j_cli.urlopen")
+    def test_call_model_reports_http_error(self, mocked_urlopen) -> None:
+        mocked_urlopen.side_effect = HTTPError(
+            "http://localhost", 401, "Unauthorized", {}, io.BytesIO(b"bad token")
+        )
 
-## Machine-readable output
+        with self.assertRaisesRegex(j_cli.HarnessError, "HTTP 401: bad token"):
+            j_cli.call_model("http://localhost", "model", "", [], 10)
 
-`--json` emits a JSON object with `model` and `response` fields. In interactive mode it emits newline-delimited JSON, one object per answer:
+    @patch("scripts.j_cli.urlopen")
+    @patch("sys.stdout", new_callable=io.StringIO)
+    def test_main_emits_machine_readable_one_shot(self, stdout, mocked_urlopen) -> None:
+        mocked_urlopen.return_value = FakeResponse({
+            "choices": [{"message": {"content": "ready"}}]
+        })
+        prompt_file = io.StringIO("unused")
+        prompt_file.isatty = lambda: True
+        with patch("sys.stdin", prompt_file):
+            exit_code = j_cli.main([
+                "--message", "status", "--no-system-prompt", "--json"
+            ])
 
-```bash
-printf '%s\n' 'Return the word READY.' | python scripts/j_cli.py --json
-```
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(json.loads(stdout.getvalue()), {
+            "model": j_cli.DEFAULT_MODEL,
+            "response": "ready",
+        })
 
-Example output:
+    def test_main_rejects_empty_prompt(self) -> None:
+        stderr = io.StringIO()
+        with patch("sys.stderr", stderr):
+            with self.assertRaises(SystemExit):
+                j_cli.main(["--message", "   "])
 
-```json
-{"model":"qwen2.5:7b","response":"READY"}
-```
+    def test_run_command_tool_requires_shell_enablement(self) -> None:
+        result = j_cli.execute_local_tool(
+            "run_command",
+            {"command": "echo hello"},
+            ".",
+            allow_shell=False,
+            allow_write=True,
+        )
+        self.assertIn("ERROR: shell execution is disabled", result)
 
-Failures are written to stderr and return a nonzero exit status. The harness never silently substitutes a mock response.
 
-## Configuration
-
-| Option | Environment variable | Default | Purpose |
-|---|---|---|---|
-| `--endpoint` | `J_CLI_ENDPOINT` | `http://127.0.0.1:11434/v1/chat/completions` | OpenAI-compatible chat completions URL |
-| `--model` | `J_CLI_MODEL` | `qwen2.5:7b` | Model identifier understood by the local server |
-| `--api-key` | `J_CLI_API_KEY` | empty | Optional bearer token for local servers that require one |
-| `--system-prompt` | — | repository `AGENTS.md` | Alternate system prompt file |
-| `--no-system-prompt` | — | off | Send no system message |
-| `--timeout` | — | `120` seconds | Per-request timeout; must be positive |
-| `--json` | — | off | Print machine-readable responses |
-
-The `--api-key` option is optional for local servers. If the endpoint requires authentication, provide the token through the environment rather than putting it in shell history:
-
-```bash
-export J_CLI_API_KEY='your-local-endpoint-token'
-python scripts/j_cli.py --message "Check readiness"
-```
-
-The endpoint can be overridden for any OpenAI-compatible server, including remote services, but the default is loopback-only. Do not send sensitive workspace material to an endpoint you have not approved.
-
-## Limits and safety boundary
-
-- The harness only sends the system prompt and prompt/conversation text to the configured endpoint.
-- It has no tool loop, shell access, filesystem-editing feature, or automatic workspace scan.
-- It does not start or configure Ollama; start the model server separately.
-- For the full backend agent workflow, use the FastAPI application. For golden evaluation, use `scripts/eval_run.py` and `scripts/EVAL_HARNESS.md`.
-
-## Tests
-
-Run the dependency-free CLI tests from the repository root:
-
-```bash
-python -m unittest tests.test_j_cli
-```
+if __name__ == "__main__":
+    unittest.main()

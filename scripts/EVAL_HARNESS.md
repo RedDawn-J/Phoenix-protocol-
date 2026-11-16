@@ -1,133 +1,102 @@
-# Golden eval harness
+# J headless CLI
 
-Two scripts that let you baseline any model against J's golden set from a terminal, no Emergent inference required. This is an evaluation workflow, separate from the interactive local chat harness in [`docs/HEADLESS_CLI.md`](../docs/HEADLESS_CLI.md).
+This is the local, dependency-light harness for the repository. It runs without the browser, backend service, or hosted AI provider. It speaks to a local OpenAI-compatible endpoint such as Ollama when present, and it can also execute a small local tool loop against the current workspace when `--tool-mode` is enabled.
 
-## Prereqs
+## Quick start
 
-    pip install requests
-
-That's it. Pure stdlib + `requests`.
-
-## Step 1 — run a model over the eval set
-
-    python scripts/eval_run.py \
-        --provider openai \
-        --endpoint https://api.groq.com/openai/v1/chat/completions \
-        --model qwen-2.5-32b \
-        --api-key "$GROQ_API_KEY" \
-        --system-prompt /app/AGENTS.md \
-        --input /app/backend/tests/eval/golden.jsonl \
-        --output /tmp/results_qwen32b.csv \
-        --concurrency 4
-
-Provider options:
-- `openai` — any OpenAI-compatible endpoint (Groq, Together, Fireworks,
-  Ollama, vLLM, LMStudio, LiteLLM, your own hosted fine-tune, etc.)
-- `gauntlet` — our own `/api/ai/chat` (pass the base URL as `--endpoint`,
-  the session token as `--api-key`).
-
-Repeat for each model you want to compare:
-
-    # J today
-    python scripts/eval_run.py --provider gauntlet \
-        --endpoint https://gauntlet-devspace.preview.emergentagent.com \
-        --api-key "$GAUNTLET_TOKEN" --model gauntlet-current \
-        --input /app/backend/tests/eval/golden.jsonl \
-        --output /tmp/results_gauntlet.csv
-
-    # Qwen 2.5 7B via Groq free tier
-    python scripts/eval_run.py --provider openai \
-        --endpoint https://api.groq.com/openai/v1/chat/completions \
-        --model qwen-2.5-7b --api-key "$GROQ_API_KEY" \
-        --system-prompt /app/AGENTS.md \
-        --input /app/backend/tests/eval/golden.jsonl \
-        --output /tmp/results_qwen7b.csv
-
-    # Local Ollama Qwen 2.5 7B (no key needed)
-    python scripts/eval_run.py --provider openai \
-        --endpoint http://localhost:11434/v1/chat/completions \
-        --model qwen2.5:7b --api-key "" \
-        --system-prompt /app/AGENTS.md \
-        --input /app/backend/tests/eval/golden.jsonl \
-        --output /tmp/results_ollama7b.csv
-
-## Step 2 — score the results
-
-    python scripts/eval_score.py \
-        --input /tmp/results_qwen32b.csv \
-        --output /tmp/scored_qwen32b.csv \
-        --judge-endpoint https://api.groq.com/openai/v1/chat/completions \
-        --judge-model llama-3.3-70b-versatile \
-        --judge-key "$GROQ_API_KEY" \
-        --concurrency 2
-
-The judge model reads each candidate response against its rubric and
-returns 0-5 with a one-sentence justification. Groq's free-tier
-`llama-3.3-70b-versatile` is a solid, cheap default. If you want a
-stronger judge, use `gpt-4o-mini` via OpenAI, or Claude Sonnet 4.5 via
-Anthropic — same endpoint shape.
-
-Summary is printed to stderr at the end:
-
-    MEAN SCORE BY MODEL
-      qwen-2.5-32b                  4.15  (n=45)
-
-    MEAN SCORE BY DOMAIN
-      code             4.31  (n=13)
-      mechanical       4.00  (n=8)
-      persona          4.12  (n=8)
-      refusal          4.33  (n=6)
-      tool_use         3.83  (n=6)
-      edge             4.25  (n=4)
-
-    OVERALL MEAN  →  4.15  (n=45)
-
-## The full three-model baseline dance
+From the repository root:
 
 ```bash
-# 1. J today (Gauntlet)
-python scripts/eval_run.py --provider gauntlet \
-    --endpoint "$GAUNTLET_URL" --api-key "$GAUNTLET_TOKEN" \
-    --model gauntlet-current \
-    --input /app/backend/tests/eval/golden.jsonl \
-    --output /tmp/results_gauntlet.csv
-
-# 2. Qwen 2.5 7B (Groq free)
-python scripts/eval_run.py --provider openai \
-    --endpoint https://api.groq.com/openai/v1/chat/completions \
-    --model qwen-2.5-7b --api-key "$GROQ_API_KEY" \
-    --system-prompt /app/AGENTS.md \
-    --input /app/backend/tests/eval/golden.jsonl \
-    --output /tmp/results_qwen7b.csv
-
-# 3. Qwen 2.5 32B (Groq free)
-python scripts/eval_run.py --provider openai \
-    --endpoint https://api.groq.com/openai/v1/chat/completions \
-    --model qwen-2.5-32b --api-key "$GROQ_API_KEY" \
-    --system-prompt /app/AGENTS.md \
-    --input /app/backend/tests/eval/golden.jsonl \
-    --output /tmp/results_qwen32b.csv
-
-# 4. Score all three with a single judge
-for f in gauntlet qwen7b qwen32b; do
-  python scripts/eval_score.py \
-    --input "/tmp/results_${f}.csv" --output "/tmp/scored_${f}.csv" \
-    --judge-endpoint https://api.groq.com/openai/v1/chat/completions \
-    --judge-model llama-3.3-70b-versatile --judge-key "$GROQ_API_KEY"
-done
+python scripts/j_cli.py --message "Explain the project structure"
 ```
 
-Compare the three OVERALL MEAN scores and the per-domain breakdowns.
-The delta between Qwen 32B-with-AGENTS.md and Gauntlet-J tells you exactly
-how much of J is scaffolding vs weight — and whether fine-tuning is worth
-the run.
+Pipe a prompt from stdin:
 
-## No-key alternative — free-tier judging by hand
+```bash
+printf '%s\n' "Summarize this repo" | python scripts/j_cli.py
+```
 
-If you don't want to burn a Groq / OpenAI key for judging, skip Step 2 and
-paste `/tmp/results_qwen32b.csv` into Claude web or Gemini with the prompt:
+Open an interactive REPL:
 
-> Grade each row 0-5 against its `ideal` and `scoring`. Return one JSON
-> object per row: `{"id":"eval_001","score":4,"why":"..."}`.
+```bash
+python scripts/j_cli.py
+```
 
-Takes 1-2 minutes per 45 rows.
+## Local model requirement
+
+The harness does not bundle a model runtime. To get real responses, run a local model server such as Ollama first:
+
+```bash
+ollama pull qwen2.5:7b
+ollama serve
+```
+
+Then run:
+
+```bash
+python scripts/j_cli.py --message "Give me a concise status report"
+```
+
+Default endpoint and model:
+
+- endpoint: `http://127.0.0.1:11434/v1/chat/completions`
+- model: `qwen2.5:7b`
+
+These can be overridden with:
+
+```bash
+python scripts/j_cli.py \
+  --endpoint http://127.0.0.1:11434/v1/chat/completions \
+  --model qwen2.5:7b \
+  --message "Check readiness"
+```
+
+## Full local capabilities
+
+The harness supports a local tool loop for tasks that do not require the full FastAPI app. Enable it with `--tool-mode`:
+
+```bash
+python scripts/j_cli.py --tool-mode --workspace . --allow-shell --allow-write --message "Inspect the repo and summarize the key files"
+```
+
+The tool loop understands these operations:
+
+- `list_dir`
+- `read_file`
+- `write_file`
+- `run_command`
+- `grep`
+- `find_files`
+
+The model can emit these as either a JSON object or a simple CALL-form command, for example:
+
+```json
+{"tool":"read_file","args":{"path":"README.md","start_line":0,"end_line":80}}
+```
+
+or:
+
+```text
+CALL read_file path=README.md start_line=0 end_line=80
+```
+
+This version is intentionally standard-library-only and never silently mocks a result. If the model server is down, the CLI exits with a clear error to stderr.
+
+## JSON output
+
+```bash
+python scripts/j_cli.py --message "Return READY." --json
+```
+
+Output:
+
+```json
+{"model":"qwen2.5:7b","response":"READY."}
+```
+
+## Safety boundary
+
+- The CLI only operates against the configured endpoint and the chosen workspace.
+- Shell execution and writes require explicit flags: `--allow-shell` and `--allow-write`.
+- The harness does not start a backend service or touch the repo’s core agent substrate.
+- For the full Gauntlet agent loop, use the repository backend and existing AI routes; for local offline work, use this CLI harness.
