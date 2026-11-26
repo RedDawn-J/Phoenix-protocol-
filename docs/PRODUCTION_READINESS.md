@@ -72,3 +72,8 @@ Never mark a gate complete based only on code inspection or documentation. Attac
 ## Portable persistence implementation status (2026-11-26)
 
 The portable SQLite adapter now has a versioned migration runner, an initial document-store schema migration, checksum verification, legacy unversioned-database adoption, future-schema fail-closed behavior, and process-local connection serialization. Regression tests cover fresh initialization, legacy data preservation, checksum drift, and unknown future versions. These changes are implemented but remain subject to the active CI run; they are not marked production-certified until the complete test gate passes. Backup/restore under concurrent writes, interrupted-upgrade recovery, multi-process locking, and corruption recovery remain release gates.
+
+
+## Portable persistence hardening (2026-11-26)
+
+The SQLite document adapter now performs update/upsert/delete read-modify-write work under `BEGIN IMMEDIATE`, supports the documented portable query/update/aggregation subset, creates validated JSON-expression indexes, and provides integrity-checked atomic backup/restore helpers. Regression coverage includes concurrent increments, nested queries/projections, update-many and aggregation behavior, real index creation, and backup/restore overwrite protection. These are implementation claims pending the active CI result; multi-process stress, crash-injection, and backup recovery on supported OS targets remain release verification work.
