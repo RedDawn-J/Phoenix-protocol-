@@ -18,6 +18,29 @@
 
 ---
 
+
+## 2026-11-26 17:20 UTC · Multi-process and recovery regression coverage — signed: Phoenix engineering
+
+### What broke, was missing, or was overdue
+The first persistence-hardening tests covered same-process concurrency and clean backup/restore, but did not yet verify cross-process write serialization, rollback of partially executed DDL, or rejection of corrupt restore inputs.
+
+### What shipped
+
+- Added four-process concurrent increment coverage against a shared SQLite file.
+- Added a failed-migration test proving transactional DDL rollback and no migration-version record is committed.
+- Added corrupt-backup rejection coverage proving no destination file is published.
+
+### Why
+SQLite is a multi-process file database in the desktop product. Locking, migration rollback, and recovery safety must be tested under the failure modes users can actually encounter.
+
+### Verification
+The latest GitHub Actions production gate for this branch is running. These new cases are not marked passed until that run completes.
+
+### Next
+Inspect both CI jobs and their logs; fix failures before staging a release candidate. Extend crash-injection coverage after this run.
+
+---
+
 ## 2026-11-26 17:18 UTC · Portable persistence transaction and recovery hardening — signed: Phoenix engineering
 
 ### What broke, was missing, or was overdue
