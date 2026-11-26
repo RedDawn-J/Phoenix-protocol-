@@ -780,3 +780,11 @@ _signed: **Phoenix engineering**_  `persistence` `sqlite` `migration`
 **Next step.** Run the backend and full production gate against the migration runner, then add backup/restore and interrupted-upgrade tests before claiming portable persistence is production ready.
 
 ---
+
+
+## 2026-11-26T17:15:00+00:00 — Migration journal ownership correction
+_signed: **Phoenix engineering**_  `governance` `documentation`
+
+The architecture notes now correctly preserve this file as the canonical substrate/developer journal, as required by AGENTS.md. MIGRATION_LOG.md remains the separate product-level runtime/schema migration timeline. The earlier note appended during this pass that called this file a legacy history was inaccurate; it is superseded by this clarification. No prior journal entries were edited or removed.
+
+---
