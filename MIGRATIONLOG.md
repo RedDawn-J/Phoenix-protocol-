@@ -788,3 +788,10 @@ _signed: **Phoenix engineering**_  `governance` `documentation`
 The architecture notes now correctly preserve this file as the canonical substrate/developer journal, as required by AGENTS.md. MIGRATION_LOG.md remains the separate product-level runtime/schema migration timeline. The earlier note appended during this pass that called this file a legacy history was inaccurate; it is superseded by this clarification. No prior journal entries were edited or removed.
 
 ---
+
+## 2026-11-26T17:12:27+00:00 — CI coverage added for schema migration tests
+_signed: **Phoenix engineering**_  `ci` `test`
+
+The SQLite migration test module now resolves the backend package root explicitly, and the production workflow executes both the portable-profile and SQLite migration regression suites. This is targeted coverage, not a claim that the entire backend suite has passed. The complete backend suite and browser end-to-end suite remain open release gates.
+
+---
