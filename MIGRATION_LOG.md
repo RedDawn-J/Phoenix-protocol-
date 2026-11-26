@@ -149,3 +149,16 @@ _signed: **Phoenix engineering**_  `persistence` `sqlite` `migration`
 **Next step.** Run the backend and full production gate against the migration runner, then add backup/restore and interrupted-upgrade tests before claiming portable persistence is production ready.
 
 ---
+
+## 2026-11-26T17:15:00+00:00 — Migration history ownership clarification
+_signed: **Phoenix engineering**_  `governance` `documentation`
+
+**Problem.** The prior architecture edit described MIGRATIONLOG.md as a legacy history. That conflicts with AGENTS.md and README.md, which identify MIGRATIONLOG.md as the canonical substrate/developer journal. MIGRATION_LOG.md has a separate product-level migration purpose in its own header.
+
+**Fix.** Clarified that the two root files are distinct append-only records: MIGRATIONLOG.md owns the developer/substrate journal; MIGRATION_LOG.md owns product runtime/schema migration entries. No historical entries were removed or rewritten.
+
+**Why.** A clean architecture needs one owner and one purpose per record. Similar filenames do not make separate histories duplicates.
+
+**Next step.** Keep both records synchronized with changes in their respective scopes and link each from the relevant engineering documentation.
+
+---
