@@ -1,19 +1,18 @@
 #!/usr/bin/env node
 /**
- * Minimal static file server for the sovereign shard frontend production build.
- *
+ * Loopback-only static server for the production React build.
  * Usage: node serve-build.js <build-dir> <port>
- *
- * Serves index.html for unknown routes (SPA fallback), sets correct
- * Content-Type headers, and injects the REACT_APP_BACKEND_URL at runtime
- * so the same artifact works regardless of where the shard is deployed.
  */
-const http = require("http");
-const fs = require("fs");
-const path = require("path");
+const http = require("node:http");
+const fs = require("node:fs");
+const path = require("node:path");
 
-const BUILD_DIR = process.argv[2] || ".";
-const PORT = parseInt(process.argv[3] || "3000", 10);
+const BUILD_ROOT = path.resolve(process.argv[2] || ".");
+const PORT = Number.parseInt(process.argv[3] || "3000", 10);
+
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+  throw new Error(`Invalid port: ${process.argv[3]}`);
+}
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -34,60 +33,81 @@ const MIME = {
   ".txt": "text/plain; charset=utf-8",
 };
 
+const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+  "X-Frame-Options": "SAMEORIGIN",
+  "Cross-Origin-Resource-Policy": "same-origin",
+};
+
+function resolveRequestPath(rawUrl) {
+  let pathname;
+  try {
+    pathname = decodeURIComponent(String(rawUrl || "/").split("?")[0]);
+  } catch {
+    return null;
+  }
+  if (pathname === "/") pathname = "/index.html";
+  const relativePath = pathname.replace(/^[/\\]+/, "");
+  const resolved = path.resolve(BUILD_ROOT, relativePath);
+  const relative = path.relative(BUILD_ROOT, resolved);
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    return null;
+  }
+  return resolved;
+}
+
+function send(res, status, headers, body) {
+  res.writeHead(status, { ...SECURITY_HEADERS, ...headers });
+  res.end(body);
+}
+
 const server = http.createServer((req, res) => {
-  let urlPath = req.url.split("?")[0];
-
-  // Normalize path
-  if (urlPath === "/") urlPath = "/index.html";
-
-  const filePath = path.join(BUILD_DIR, urlPath);
-
-  // Prevent path traversal
-  if (!filePath.startsWith(path.resolve(BUILD_DIR))) {
-    res.writeHead(403);
-    res.end("Forbidden");
+  const filePath = resolveRequestPath(req.url);
+  if (!filePath) {
+    send(res, 403, { "Content-Type": "text/plain; charset=utf-8" }, "Forbidden");
     return;
   }
 
-  fs.stat(filePath, (err, stat) => {
-    if (err || !stat.isFile()) {
-      // SPA fallback — serve index.html for client-side routing
-      const fallback = path.join(BUILD_DIR, "index.html");
-      fs.readFile(fallback, (e2, data) => {
-        if (e2) {
-          res.writeHead(404);
-          res.end("Not found");
-          return;
-        }
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-        res.end(data);
-      });
-      return;
-    }
-
-    const ext = path.extname(filePath).toLowerCase();
-    const contentType = MIME[ext] || "application/octet-stream";
-    fs.readFile(filePath, (e3, data) => {
-      if (e3) {
-        res.writeHead(500);
-        res.end("Internal server error");
+  fs.stat(filePath, (statError, stat) => {
+    const target = !statError && stat.isFile() ? filePath : path.join(BUILD_ROOT, "index.html");
+    fs.readFile(target, (readError, data) => {
+      if (readError) {
+        send(res, 404, { "Content-Type": "text/plain; charset=utf-8" }, "Not found");
         return;
       }
-      res.writeHead(200, { "Content-Type": contentType });
-      res.end(data);
+      const ext = path.extname(target).toLowerCase();
+      const cacheControl = target === filePath && /\\.(?:js|css|woff2?|ttf)$/.test(ext)
+        ? "public, max-age=31536000, immutable"
+        : "no-cache";
+      send(res, 200, {
+        "Content-Type": MIME[ext] || "application/octet-stream",
+        "Cache-Control": cacheControl,
+      }, data);
     });
   });
 });
 
+server.requestTimeout = 30_000;
+server.headersTimeout = 10_000;
+server.keepAliveTimeout = 5_000;
+server.maxHeadersCount = 100;
+
 server.listen(PORT, "127.0.0.1", () => {
-  console.log(`[sovereign-frontend] Serving ${BUILD_DIR} on http://127.0.0.1:${PORT}`);
+  console.log(`[phoenix-frontend] Serving ${BUILD_ROOT} on http://127.0.0.1:${PORT}`);
 });
 
-server.on("error", (e) => {
-  if (e.code === "EADDRINUSE") {
-    console.error(`[sovereign-frontend] Port ${PORT} is already in use.`);
+server.on("error", (error) => {
+  if (error.code === "EADDRINUSE") {
+    console.error(`[phoenix-frontend] Port ${PORT} is already in use.`);
   } else {
-    console.error(`[sovereign-frontend] Server error: ${e.message}`);
+    console.error(`[phoenix-frontend] Server error: ${error.message}`);
   }
-  process.exit(1);
+  process.exitCode = 1;
 });
+
+function shutdown() {
+  server.close(() => process.exit(0));
+}
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
