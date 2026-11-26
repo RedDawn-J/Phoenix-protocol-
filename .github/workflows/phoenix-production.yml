@@ -48,7 +48,7 @@ jobs:
           DB_NAME: phoenix_ci
           EMERGENT_LLM_KEY: ci-placeholder
           OVERRIDE_PASSWORD: ci-placeholder-not-for-production
-        run: pytest backend/tests/test_portable_profile.py -q
+        run: pytest backend/tests/test_portable_profile.py backend/tests/test_sqlite_migrations.py -q
       - name: Run headless runtime tests
         run: >-
           python -m unittest
