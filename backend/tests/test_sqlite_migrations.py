@@ -152,9 +152,10 @@ async def test_sqlite_index_creation_is_real_and_validated(tmp_path):
     client.close()
 
 
-def test_sqlite_backup_and_restore_roundtrip(tmp_path):
+@pytest.mark.asyncio
+async def test_sqlite_backup_and_restore_roundtrip(tmp_path):
     original = SQLiteClient(tmp_path / "live" / "phoenix.db")
-    original.db.projects.insert_one({"_id": "project-1", "name": "Preserved"})
+    await original.db.projects.insert_one({"_id": "project-1", "name": "Preserved"})
     backup_path = original.db.backup_to(tmp_path / "backups" / "phoenix.db")
     original.close()
 
@@ -162,7 +163,8 @@ def test_sqlite_backup_and_restore_roundtrip(tmp_path):
         backup_path, tmp_path / "restored" / "phoenix.db"
     )
     restored = SQLiteClient(restored_path)
-    assert restored.db.projects.find_one({"_id": "project-1"})["name"] == "Preserved"
+    found = await restored.db.projects.find_one({"_id": "project-1"})
+    assert found["name"] == "Preserved"
     restored.close()
 
 
