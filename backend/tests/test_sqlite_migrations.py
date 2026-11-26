@@ -65,3 +65,88 @@ def test_unknown_future_schema_fails_closed(tmp_path):
     with pytest.raises(MigrationError, match="newer than this Phoenix build"):
         apply_migrations(connection)
     connection.close()
+
+
+@pytest.mark.asyncio
+async def test_sqlite_updates_are_atomic_under_concurrency(tmp_path):
+    import asyncio
+
+    client = SQLiteClient(tmp_path / "concurrent.db")
+    collection = client.db.counters
+    await collection.insert_one({"_id": "global", "value": 0})
+
+    await asyncio.gather(*[
+        collection.update_one({"_id": "global"}, {"$inc": {"value": 1}})
+        for _ in range(80)
+    ])
+
+    result = await collection.find_one({"_id": "global"})
+    assert result["value"] == 80
+    client.close()
+
+
+@pytest.mark.asyncio
+async def test_sqlite_query_operators_nested_fields_and_projection(tmp_path):
+    client = SQLiteClient(tmp_path / "queries.db")
+    collection = client.db.events
+    await collection.insert_many([
+        {"_id": "a", "user_id": "u1", "meta": {"state": "ready"}, "ts": 10},
+        {"_id": "b", "user_id": "u2", "meta": {"state": "queued"}, "ts": 20},
+        {"_id": "c", "user_id": "u1", "ts": 30},
+    ])
+
+    rows = await collection.find({
+        "$or": [
+            {"meta.state": "ready"},
+            {"meta.state": {"$exists": False}},
+        ],
+        "user_id": {"$in": ["u1"]},
+        "ts": {"$gte": 10, "$lte": 30},
+    }, {"_id": 0, "user_id": 1, "meta.state": 1}).to_list(10)
+
+    assert len(rows) == 2
+    assert all(row["user_id"] == "u1" for row in rows)
+    assert {row.get("meta", {}).get("state") for row in rows} == {"ready", None}
+    client.close()
+
+
+@pytest.mark.asyncio
+async def test_sqlite_update_many_push_unset_and_aggregate(tmp_path):
+    client = SQLiteClient(tmp_path / "updates.db")
+    collection = client.db.jobs
+    await collection.insert_many([
+        {"_id": "1", "status": "pending", "team": "a", "attempts": 0},
+        {"_id": "2", "status": "pending", "team": "a", "attempts": 1},
+        {"_id": "3", "status": "done", "team": "b", "attempts": 4},
+    ])
+
+    changed = await collection.update_many(
+        {"status": "pending"},
+        {"$set": {"status": "queued"}, "$inc": {"attempts": 1},
+         "$push": {"history": {"$each": ["queued"]}}},
+    )
+    assert changed.matched_count == 2
+    assert changed.modified_count == 2
+
+    await collection.update_one({"_id": "1"}, {"$unset": {"history": ""}})
+    groups = collection.aggregate([
+        {"$match": {"status": "queued"}},
+        {"$group": {"_id": "$team", "count": {"$sum": 1}, "attempts": {"$sum": "$attempts"}}},
+        {"$sort": [("count", -1)]},
+    ]).to_list(10)
+
+    assert groups == [{"_id": "a", "count": 2, "attempts": 3}]
+    client.close()
+
+
+@pytest.mark.asyncio
+async def test_sqlite_index_creation_is_real_and_validated(tmp_path):
+    client = SQLiteClient(tmp_path / "indexes.db")
+    collection = client.db.events
+    index_name = await collection.create_index([("user_id", 1), ("ts", -1)])
+    indexes = client.db.conn.execute("PRAGMA index_list(documents)").fetchall()
+    assert any(row["name"] == index_name for row in indexes)
+
+    with pytest.raises(ValueError, match="Unsupported index field"):
+        await collection.create_index([("user_id); DROP TABLE documents;--", 1)])
+    client.close()
