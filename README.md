@@ -157,6 +157,29 @@ chronicle mirrors, snapshots, and migration logs.
 
 ---
 
+## Phoenix local runtime preview
+
+The repository also includes a dependency-light, local-first browser workspace. This is the current standalone runtime milestone: a loopback-only browser UI, local OpenAI-compatible model connection, workspace file editor, and explicitly exposed local terminal. It is a developer preview, not yet a signed desktop distribution or an OS-level sandbox.
+
+From the repository root:
+
+```bash
+# Check the local runtime prerequisites
+python -m scripts.phoenix doctor
+
+# Start the browser workspace (create ./workspace if needed)
+python -m scripts.phoenix start --workspace ./workspace --create-workspace
+
+# Run the local runtime test suites
+python -m unittest tests.test_j_cli tests.test_j_ui tests.test_j_ui_workspace tests.test_j_forge tests.test_phoenix -v
+```
+
+The model endpoint defaults to `http://127.0.0.1:11434/v1/chat/completions` and the model defaults to `qwen2.5:7b`. Override with `--endpoint` and `--model`, or `J_CLI_ENDPOINT` and `J_CLI_MODEL`. Keep the UI bound to loopback. The terminal runs with your OS user's permissions; use a dedicated workspace and review commands before execution.
+
+See [Phoenix Runtime Quickstart](docs/PHOENIX_RUNTIME_QUICKSTART.md) for setup and current limitations.
+
+---
+
 ## Running locally
 
 ```bash
