@@ -67,3 +67,8 @@ The current GitHub Actions production gate compiles Python, runs backend and hea
 ## Working rule
 
 Never mark a gate complete based only on code inspection or documentation. Attach a reproducible test, build artifact, or recorded manual acceptance result to each completed gate.
+
+
+## Portable persistence implementation status (2026-11-26)
+
+The portable SQLite adapter now has a versioned migration runner, an initial document-store schema migration, checksum verification, legacy unversioned-database adoption, future-schema fail-closed behavior, and process-local connection serialization. Regression tests cover fresh initialization, legacy data preservation, checksum drift, and unknown future versions. These changes are implemented but remain subject to the active CI run; they are not marked production-certified until the complete test gate passes. Backup/restore under concurrent writes, interrupted-upgrade recovery, multi-process locking, and corruption recovery remain release gates.
