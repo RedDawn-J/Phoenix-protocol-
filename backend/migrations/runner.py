@@ -19,6 +19,16 @@ class Migration:
     name: str
     statements: tuple[str, ...]
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.version, int) or self.version < 1:
+            raise MigrationError("Migration version must be a positive integer")
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise MigrationError("Migration name must be a non-empty string")
+        immutable_statements = tuple(self.statements)
+        if not immutable_statements or any(not isinstance(item, str) or not item.strip() for item in immutable_statements):
+            raise MigrationError("Migrations must contain non-empty SQL statements")
+        object.__setattr__(self, "statements", immutable_statements)
+
     @property
     def checksum(self) -> str:
         payload = json.dumps(self.statements, ensure_ascii=False, separators=(",", ":"))
@@ -48,6 +58,9 @@ def apply_migrations(
         raise MigrationError("Migration versions must be unique, ascending, and start at 1")
     if versions and versions != list(range(1, versions[-1] + 1)):
         raise MigrationError("Migration version sequence contains a gap")
+    names = [migration.name for migration in selected]
+    if len(names) != len(set(names)):
+        raise MigrationError("Migration names must be unique")
 
     connection.execute(
         """CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -68,6 +81,9 @@ def apply_migrations(
         raise MigrationError(
             f"Database schema {future[-1]} is newer than this Phoenix build ({latest_known})"
         )
+    stored_versions = sorted(applied)
+    if stored_versions and stored_versions != list(range(1, stored_versions[-1] + 1)):
+        raise MigrationError("Stored migration history contains a version gap")
 
     for migration in selected:
         previous = applied.get(migration.version)
