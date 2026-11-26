@@ -767,3 +767,16 @@ _signed: **Phoenix engineering**_  `architecture` `ci` `migration`
 ---
 
 > Canonical product migration history is maintained in `MIGRATION_LOG.md`. This legacy timeline is retained for historical continuity; new engineering records are mirrored here until the histories are formally reconciled.
+
+## 2026-11-26T17:12:00+00:00 — Versioned SQLite schema migrations
+_signed: **Phoenix engineering**_  `persistence` `sqlite` `migration`
+
+**Problem.** The portable SQLite adapter created its document table opportunistically at connection startup. It had no schema version, immutable migration checksum, or explicit rejection of databases created by a newer build. The shared SQLite connection also had no process-local serialization lock despite being used across worker threads.
+
+**Fix.** Added a complete migration runner and initial versioned document-store migration. Fresh databases are initialized transactionally; existing unversioned document stores are adopted without dropping data. Applied migration names/checksums are recorded and verified, future schema versions fail closed, and the connection now uses a re-entrant lock plus explicit SQLite durability/concurrency pragmas. Added regression tests for fresh initialization, legacy adoption, checksum drift, and future-version rejection.
+
+**Why.** Portable user data must survive upgrades without silent schema drift. Schema evolution needs reproducible, reviewable history and safe startup behavior; SQLite access must serialize use of its shared connection.
+
+**Next step.** Run the backend and full production gate against the migration runner, then add backup/restore and interrupted-upgrade tests before claiming portable persistence is production ready.
+
+---
