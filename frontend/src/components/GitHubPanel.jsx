@@ -1,4 +1,4 @@
-import { useEffect, useState, Component } from "react";
+import { useCallback, useEffect, useState, Component } from "react";
 import { GithubLogo, CloudArrowUp, CloudArrowDown, GitPullRequest, Plus, ArrowSquareOut, X } from "@phosphor-icons/react";
 import {
   githubStatus, githubConnectPAT, githubDisconnect, githubRepos, githubClone,
@@ -42,7 +42,7 @@ function GitHubPanelInner({ projectId, onRefresh, onProjectCloned }) {
 
   function flash(m) { setToast(m); setTimeout(() => setToast(null), 2200); }
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     let s = { connected: false };
     let ls = { branch: "main", files: [] };
     try { s = await githubStatus(); }
@@ -52,8 +52,8 @@ function GitHubPanelInner({ projectId, onRefresh, onProjectCloned }) {
       catch (e) { console.warn("gitStatus failed", e); }
     }
     setGh(s); setLocal(ls);
-  }
-  useEffect(() => { refresh(); /* eslint-disable-next-line */ }, [projectId]);
+  }, [projectId]);
+  useEffect(() => { refresh(); }, [refresh]);
 
   async function commit() {
     if (!commitMsg.trim()) return;
