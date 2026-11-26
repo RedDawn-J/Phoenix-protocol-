@@ -145,7 +145,9 @@ This is a target ownership map, not permission to create empty packages. A packa
 
 ### Persistence and migrations
 
-- One canonical product-level timeline is `MIGRATION_LOG.md`; `MIGRATIONLOG.md` is retained as a legacy history until its entries are reconciled. Do not delete or rewrite either history during reconciliation.
+- `MIGRATIONLOG.md` is the canonical substrate/developer journal, as defined by `AGENTS.md`; it records engineering milestones and lessons.
+- `MIGRATION_LOG.md` is the product-level runtime/schema migration timeline, as defined by its own header; it records product migrations separately from the developer journal.
+- Both histories are append-only and have distinct purposes. Do not merge, delete, or rewrite historical entries to make the files look uniform.
 - Database schema migrations live beside the persistence implementation, are numbered, deterministic, transactional where supported, and safe to re-run only when explicitly designed as idempotent.
 - Each migration records an identifier, checksum, timestamp, and completion status in the database. Startup checks schema compatibility and refuses unsafe downgrade or unknown future versions.
 - A migration must include forward behavior, backup/restore expectations, rollback or forward-repair strategy, and tests against both an empty database and a copy of the previous schema.
