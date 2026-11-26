@@ -42,7 +42,7 @@ async function rawGet(requestPath) {
 
 before(async () => {
   root = await fs.mkdtemp(path.join(os.tmpdir(), "phoenix-static-"));
-  await fs.writeFile(path.join(root, "index.html"), "<main>Phoenix test shell</main>");
+  await fs.writeFile(path.join(root, "index.html"), "<!doctype html><html><head></head><body><main>Phoenix test shell</main></body></html>");
   await fs.writeFile(path.join(root, "app.js"), "globalThis.phoenixReady = true;");
   port = await freePort();
   child = spawn(process.execPath, [serverScript, root, String(port)], {
@@ -71,8 +71,8 @@ test("serves the production index and SPA fallback", async () => {
   const rootResponse = await rawGet("/");
   assert.equal(rootResponse.status, 200);
   assert.match(rootResponse.body, /Phoenix test shell/);
-  assert.match(rootResponse.body, /window\\.__PHOENIX_CONFIG__/);
-  assert.match(rootResponse.body, /"backendUrl":"http:\\/\\/127\\.0\\.0\\.1:8001"/);
+  assert.ok(rootResponse.body.includes("window.__PHOENIX_CONFIG__"));
+  assert.ok(rootResponse.body.includes('"backendUrl":"http://127.0.0.1:8001"'));
   const routeResponse = await rawGet("/projects/example/settings");
   assert.equal(routeResponse.status, 200);
   assert.match(routeResponse.body, /Phoenix test shell/);
