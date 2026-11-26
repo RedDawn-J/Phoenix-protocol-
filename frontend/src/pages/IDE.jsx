@@ -442,7 +442,7 @@ export default function IDE() {
         return (
           <div className="flex-1 flex min-h-0 relative">
             <LeftRail active={leftView} onChange={setLeftView} />
-            <PanelGroup direction="horizontal" id="gauntlet-h" className="flex-1">
+            <PanelGroup orientation="horizontal" id="gauntlet-h" className="flex-1">
               <Panel defaultSize="18" minSize="10" maxSize="45" id="panel-left"
                      className="border-r border-cyan/10 bg-midnight/80">
                 <div className="h-full flex flex-col">{leftPanelBody}</div>
