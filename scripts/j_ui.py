@@ -9,6 +9,7 @@ import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Callable
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
@@ -113,8 +114,12 @@ def make_handler(
     system_prompt: str,
     workspace: Path,
     timeout: int,
+    call_model_fn: Callable[..., str] | None = None,
 ) -> type[BaseHTTPRequestHandler]:
     endpoint = _loopback_endpoint(endpoint)
+    def model_caller(*args: Any, **kwargs: Any) -> str:
+        caller = call_model_fn if call_model_fn is not None else call_model
+        return caller(*args, **kwargs)
     root = workspace.resolve()
 
     class Handler(BaseHTTPRequestHandler):
@@ -239,7 +244,7 @@ def make_handler(
                 if system_prompt:
                     prompt_messages.append({"role": "system", "content": system_prompt})
                 prompt_messages.extend(safe_messages)
-                reply = call_model(endpoint, selected_model, api_key, prompt_messages, timeout)
+                reply = model_caller(endpoint, selected_model, api_key, prompt_messages, timeout)
                 self._json(200, {"reply": reply, "model": selected_model})
             except HarnessError as exc:
                 self._json(400, {"error": str(exc)})

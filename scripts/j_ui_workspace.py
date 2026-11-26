@@ -16,7 +16,7 @@ from urllib.parse import parse_qs, urlparse
 if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.j_cli import DEFAULT_ENDPOINT, DEFAULT_MODEL, HarnessError, _default_system_prompt
+from scripts.j_cli import DEFAULT_ENDPOINT, DEFAULT_MODEL, HarnessError, _default_system_prompt, call_model
 from scripts.j_ui import MAX_BODY_BYTES, MAX_FILE_BYTES, _loopback_endpoint, make_handler
 from http.server import ThreadingHTTPServer
 
@@ -83,7 +83,7 @@ def make_workspace_handler(
     workspace: Path,
     timeout: int,
 ) -> type:
-    base_handler = make_handler(endpoint, model, api_key, system_prompt, workspace, timeout)
+    base_handler = make_handler(endpoint, model, api_key, system_prompt, workspace, timeout, call_model_fn=lambda *args, **kwargs: call_model(*args, **kwargs))
     root = workspace.resolve()
 
     class WorkspaceHandler(base_handler):
@@ -115,11 +115,14 @@ def make_workspace_handler(
 
         def do_POST(self) -> None:
             route = urlparse(self.path).path
-            if route not in {"/api/command", "/api/file/write"}:
+            if route not in {"/api/chat", "/api/command", "/api/file/write"}:
                 super().do_POST()
                 return
             if not _local_request_allowed(self):
                 self._json(403, {"error": "Workspace actions require a same-origin loopback request"})
+                return
+            if route == "/api/chat":
+                super().do_POST()
                 return
             try:
                 payload = self._body()

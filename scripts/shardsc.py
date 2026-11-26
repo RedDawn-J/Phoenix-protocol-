@@ -149,6 +149,11 @@ class Parser:
 
     def parse_statement(self) -> Node:
         token = self.current()
+        if token.kind == "identifier" and token.value == "import":
+            raise ShardError(
+                f"line {token.line}:{token.column}: unexpected character 'i' "
+                "(import declarations are not supported)"
+            )
         if self.accept("let"):
             name = self.require_identifier()
             self.require("=")
