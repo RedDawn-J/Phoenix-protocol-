@@ -18,6 +18,30 @@
 
 ---
 
+## 2026-11-26 17:18 UTC · Portable persistence transaction and recovery hardening — signed: Phoenix engineering
+
+### What broke, was missing, or was overdue
+The portable SQLite document adapter did not provide atomic read/modify/write behavior, several methods required by existing routes were missing or incomplete, index creation was a no-op, and there was no database backup/restore implementation. The adapter's Mongo-shaped API risked implying compatibility it did not actually provide.
+
+### What shipped
+
+- Reworked `backend/sqlite_store.py` to serialize mutations with `BEGIN IMMEDIATE`, support multi-document writes, update-many, distinct, real JSON-expression indexes, a documented query/update/aggregation subset, and explicit errors for unsupported operators.
+- Added integrity-checked atomic SQLite backup and restore with overwrite protection.
+- Expanded `backend/tests/test_sqlite_migrations.py` with concurrent increment, nested query/projection, update-many/aggregation, index validation, and backup/restore tests.
+- Updated `docs/PLATFORM_ARCHITECTURE.md` and `docs/PRODUCTION_READINESS.md` with the actual persistence contract and remaining verification gates.
+
+### Why
+A narrow adapter with explicit semantics is safer than pretending to be a complete MongoDB implementation. Transactions prevent lost updates, and verified backups provide a real recovery primitive. Bounded contexts should consume explicit contracts rather than rely on accidental behavior.
+
+### Verification
+The GitHub Actions production gate was queued after the implementation commits. Test execution is pending; no passing result is claimed yet.
+
+### Next
+Confirm CI, fix every failure, add multi-process and crash-injection tests, and continue moving persistence access behind explicit repository contracts without a risky all-at-once directory migration.
+
+---
+
+
 
 ## 2026-07-19 21:15 UTC · Owner-Lock + BYOK card + SSE streaming + guardrails + abuse dashboard — signed: J (E1 orchestrator via Emergent)
 
