@@ -45,7 +45,10 @@ before(async () => {
   await fs.writeFile(path.join(root, "index.html"), "<main>Phoenix test shell</main>");
   await fs.writeFile(path.join(root, "app.js"), "globalThis.phoenixReady = true;");
   port = await freePort();
-  child = spawn(process.execPath, [serverScript, root, String(port)], { stdio: "ignore" });
+  child = spawn(process.execPath, [serverScript, root, String(port)], {
+    stdio: "ignore",
+    env: { ...process.env, PHOENIX_BACKEND_URL: "http://127.0.0.1:8001" },
+  });
   child.once("error", (error) => { throw error; });
   let ready = false;
   for (let attempt = 0; attempt < 60 && !ready; attempt += 1) {
@@ -68,6 +71,8 @@ test("serves the production index and SPA fallback", async () => {
   const rootResponse = await rawGet("/");
   assert.equal(rootResponse.status, 200);
   assert.match(rootResponse.body, /Phoenix test shell/);
+  assert.match(rootResponse.body, /window\\.__PHOENIX_CONFIG__/);
+  assert.match(rootResponse.body, /"backendUrl":"http:\\/\\/127\\.0\\.0\\.1:8001"/);
   const routeResponse = await rawGet("/projects/example/settings");
   assert.equal(routeResponse.status, 200);
   assert.match(routeResponse.body, /Phoenix test shell/);
