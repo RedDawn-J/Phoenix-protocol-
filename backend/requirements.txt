@@ -21,7 +21,6 @@ dnspython==2.8.0
 dulwich==1.2.6
 ecdsa==0.19.2
 email-validator==2.3.0
-emergentintegrations==0.1.0
 fastapi==0.110.1
 fastembed==0.8.0
 fastuuid==0.14.0

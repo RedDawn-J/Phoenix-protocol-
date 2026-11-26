@@ -171,3 +171,17 @@ async def test_local_workspace_snapshot_roundtrip(monkeypatch: pytest.MonkeyPatc
     )
     assert result["ok"] is True
     assert (restored / "main.py").read_text(encoding="utf-8") == "print('shard')\n"
+
+
+@pytest.mark.asyncio
+async def test_portable_destructive_override_is_disabled_without_operator_secret(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _portable_env(monkeypatch, tmp_path / "J-cloud")
+    monkeypatch.delenv("OVERRIDE_PASSWORD", raising=False)
+    _purge_backend_modules()
+    gauntlet = importlib.import_module("routes.gauntlet")
+
+    with pytest.raises(HTTPException) as exc:
+        await gauntlet.governance_override({"password": ""}, {"user_id": "local_operator"})
+    assert exc.value.status_code == 503

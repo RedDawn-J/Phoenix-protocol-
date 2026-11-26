@@ -123,3 +123,81 @@ _signed: **E1 (main agent)**_  `feature` `governance`
 **Next step.** Surface the log in the UI as a new AI Coworker tab so users can read their own build history without curl. Add a "Pin entry" button so important milestones float above the auto-noise.
 
 ---
+
+## 2026-11-26T17:05:00+00:00 — Architecture hardening and build-gate repair
+_signed: **Phoenix engineering**_  `architecture` `ci` `migration`
+
+**Problem.** The active production-gate run passed Python compilation, portable backend tests, headless runtime tests, and static-server security tests, but the React production build failed because three effects captured non-memoized refresh functions. The repository also contains two root-level migration histories without a clearly enforced canonical policy, while the portable SQLite adapter still needs deeper transaction/concurrency contract coverage.
+
+**Fix.** Memoized the Chronicle, GitHub, and Live Preview refresh callbacks with explicit dependencies so effects can depend on stable callbacks rather than suppressing hook lint rules. Established this file as the canonical product migration history while preserving the legacy `MIGRATIONLOG.md` history and appending a matching maintenance record there. The architecture contract now defines module boundaries, versioned interfaces, data ownership, migration discipline, and release immutability.
+
+**Why.** A clean build must be deterministic rather than achieved by disabling lint. Migration history must remain append-only and auditable. Stable module boundaries prevent the IDE, runtime, persistence, device broker, and communications providers from collapsing into a single application monolith.
+
+**Next step.** Re-run the full production gate; then address any remaining build diagnostics and add migration/concurrency contract tests before treating portable persistence as production-grade.
+
+---
+
+## 2026-11-26T17:12:00+00:00 — Versioned SQLite schema migrations
+_signed: **Phoenix engineering**_  `persistence` `sqlite` `migration`
+
+**Problem.** The portable SQLite adapter created its document table opportunistically at connection startup. It had no schema version, immutable migration checksum, or explicit rejection of databases created by a newer build. The shared SQLite connection also had no process-local serialization lock despite being used across worker threads.
+
+**Fix.** Added a complete migration runner and initial versioned document-store migration. Fresh databases are initialized transactionally; existing unversioned document stores are adopted without dropping data. Applied migration names/checksums are recorded and verified, future schema versions fail closed, and the connection now uses a re-entrant lock plus explicit SQLite durability/concurrency pragmas. Added regression tests for fresh initialization, legacy adoption, checksum drift, and future-version rejection.
+
+**Why.** Portable user data must survive upgrades without silent schema drift. Schema evolution needs reproducible, reviewable history and safe startup behavior; SQLite access must serialize use of its shared connection.
+
+**Next step.** Run the backend and full production gate against the migration runner, then add backup/restore and interrupted-upgrade tests before claiming portable persistence is production ready.
+
+---
+
+## 2026-11-26T17:15:00+00:00 — Migration history ownership clarification
+_signed: **Phoenix engineering**_  `governance` `documentation`
+
+**Problem.** The prior architecture edit described MIGRATIONLOG.md as a legacy history. That conflicts with AGENTS.md and README.md, which identify MIGRATIONLOG.md as the canonical substrate/developer journal. MIGRATION_LOG.md has a separate product-level migration purpose in its own header.
+
+**Fix.** Clarified that the two root files are distinct append-only records: MIGRATIONLOG.md owns the developer/substrate journal; MIGRATION_LOG.md owns product runtime/schema migration entries. No historical entries were removed or rewritten.
+
+**Why.** A clean architecture needs one owner and one purpose per record. Similar filenames do not make separate histories duplicates.
+
+**Next step.** Keep both records synchronized with changes in their respective scopes and link each from the relevant engineering documentation.
+
+---
+
+## 2026-11-26T17:12:27+00:00 — Migration regression suite wired into CI
+_signed: **Phoenix engineering**_  `ci` `persistence` `verification`
+
+**Problem.** The new SQLite migration regression tests existed but were not part of the production-gate command, and their import path was not explicit when collected by pytest.
+
+**Fix.** Added deterministic backend-root path setup to the migration test module and extended the production workflow to run the portable-profile suite together with the SQLite migration suite. The full backend history suite remains a separate release gate and is not represented as complete.
+
+**Why.** A migration runner without automated execution is only an unverified code path. The CI gate must test the schema initialization and upgrade behavior it is intended to protect.
+
+**Next step.** Confirm the latest workflow completes successfully, then expand persistence verification to interrupted migrations, concurrent access, and backup/restore.
+
+---
+
+---
+
+## 2026-11-26T17:18:20+00:00 — Transactional portable persistence and recovery
+_signed: **Phoenix engineering**_  `sqlite` `persistence` `recovery` `tests`
+
+**Problem.** The portable SQLite adapter exposed a Mongo-shaped interface but had non-atomic read/modify/write operations, incomplete update/query coverage, a placeholder index method, and no database-level backup/restore path. Concurrent updates could lose increments, while unsupported query behavior could silently diverge from the cloud adapter.
+
+**Fix.** Reworked the adapter around transactional update/upsert/delete operations using `BEGIN IMMEDIATE`; added a documented operator subset with explicit errors for unsupported operations; implemented real JSON-expression indexes, multi-document writes, distinct queries, aggregation stages, and integrity-checked atomic backup/restore. Added regression tests for concurrent increments, nested queries/projections, update-many, aggregation, index validation, backup round-trip, and overwrite protection. Updated the platform architecture and production-readiness contract to state the exact supported surface and remaining release gates.
+
+**Why.** Portable persistence must be predictable, recoverable, and honest about compatibility. A narrow tested adapter is safer than a broad fake MongoDB clone. Atomic transactions and verified backups protect user data without coupling domain logic to SQLite.
+
+**Next step.** Verify the production CI run, add multi-process and crash-injection coverage, and then route further persistence work through the documented repository boundary.
+
+---
+
+## 2026-11-26T17:20:02.873+00:00 — Persistence recovery and concurrency regression coverage
+_signed: **Phoenix engineering**_  `tests` `sqlite` `migration`
+
+**Problem.** Transactional persistence changes needed proof beyond same-process concurrency. Migration failure must leave no partially created schema objects or applied-version records, and restore must reject corrupt input without publishing a destination file.
+
+**Fix.** Added multi-process increment stress coverage using four independent SQLite clients, migration DDL rollback coverage, and corrupt-backup rejection coverage. The tests exercise SQLite write-lock coordination, migration transaction rollback, and atomic restore publication.
+
+**Why.** Correctness must hold across process boundaries and failed upgrades, not only in a single happy-path test. A restore operation must never replace a valid database with unverified bytes.
+
+**Next step.** Wait for the latest production-gate run and repair any failures; add kill/crash injection and platform-level backup verification before marking recovery production-ready.

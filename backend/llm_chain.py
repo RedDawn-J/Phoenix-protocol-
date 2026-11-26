@@ -117,6 +117,24 @@ async def _call_ollama(base_url: str, model: str, system: str, user_text: str) -
 
 async def _single_call(api_key_or_cfg: Any, provider: str, model: str,
                        system: str, user_text: str, session_id: str) -> str:
+    if isinstance(api_key_or_cfg, dict) and "managed_universal_key" in api_key_or_cfg:
+        # Optional compatibility path for deployments that separately install
+        # the private managed-key adapter. It is intentionally not a required
+        # dependency of the public, portable build.
+        try:
+            from emergentintegrations.llm.chat import LlmChat, UserMessage
+        except ImportError as exc:
+            raise RuntimeError(
+                "Managed LLM adapter is not installed; configure a provider key in Settings"
+            ) from exc
+        chat = LlmChat(
+            api_key=api_key_or_cfg["managed_universal_key"],
+            session_id=session_id,
+            system_message=system,
+        ).with_model(provider, model)
+        response = await chat.send_message(UserMessage(text=user_text))
+        return response if isinstance(response, str) else str(response)
+
     if provider == "ollama":
         cfg = api_key_or_cfg if isinstance(api_key_or_cfg, dict) else {}
         chosen_model = model if model != "user-default" else cfg.get("default_model", "")
@@ -124,14 +142,26 @@ async def _single_call(api_key_or_cfg: Any, provider: str, model: str,
             raise RuntimeError("Ollama default model not configured")
         return await _call_ollama(cfg["base_url"], chosen_model, system, user_text)
 
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
-    chat = LlmChat(
+    # LiteLLM provides a public, provider-neutral adapter for cloud providers.
+    # Portable mode never reaches this path: it forces local Ollama.
+    import litellm
+
+    response = await litellm.acompletion(
+        model=f"{provider}/{model}",
         api_key=api_key_or_cfg,
-        session_id=session_id,
-        system_message=system,
-    ).with_model(provider, model)
-    resp = await chat.send_message(UserMessage(text=user_text))
-    return resp if isinstance(resp, str) else str(resp)
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_text},
+        ],
+        timeout=120,
+    )
+    content = response.choices[0].message.content
+    if isinstance(content, list):
+        return "\n".join(
+            part.get("text", "") for part in content
+            if isinstance(part, dict) and part.get("type") == "text"
+        )
+    return content or ""
 
 
 async def _record_telemetry(user_id: str, meta: dict) -> None:
@@ -183,7 +213,13 @@ async def chain_call(user_id: str, task: str, system: str, user_text: str,
     for pass_idx in range(max_passes):
         for source, provider, model in chain:
             if source == "universal":
-                api_key = EMERGENT_LLM_KEY
+                if not EMERGENT_LLM_KEY:
+                    attempts.append({"pass": pass_idx, "source": source,
+                                     "provider": provider, "model": model,
+                                     "status": "skipped", "reason": "managed-key-missing",
+                                     "ms": 0})
+                    continue
+                api_key = {"managed_universal_key": EMERGENT_LLM_KEY}
                 effective_model = model
             elif source == "local":
                 api_key = {"base_url": settings.local_llm_base_url, "default_model": settings.local_llm_model}

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { X, ArrowsClockwise, DeviceMobile, Desktop, CaretDown } from "@phosphor-icons/react";
 import { readFile } from "@/lib/api";
 
@@ -45,7 +45,7 @@ export default function LivePreview({ projectId, onClose, htmlFiles = [], initia
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialPath]);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     setError(null);
     try {
       const f = await readFile(projectId, selectedPath);
@@ -54,9 +54,9 @@ export default function LivePreview({ projectId, onClose, htmlFiles = [], initia
       setError(e?.response?.data?.detail || `Could not read ${selectedPath}`);
       setHtml("");
     }
-  }
+  }, [projectId, selectedPath]);
 
-  useEffect(() => { refresh(); /* eslint-disable-next-line */ }, [projectId, selectedPath]);
+  useEffect(() => { refresh(); }, [refresh]);
 
   const width = device === "mobile" ? 390 : "100%";
   const hasOptions = fileList.length > 0;

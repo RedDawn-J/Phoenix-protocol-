@@ -434,3 +434,16 @@ Full roadmap in [`/app/memory/PRD.md`](memory/PRD.md).
 **Gauntlet DevSpace** · A Sovereign Shards build by [bluejgenesis](https://bluejgenesis.com).
 
 </div>
+
+
+## Phoenix standalone runtime
+
+Phoenix combines the full React/FastAPI development environment with a local-first runtime profile and a dependency-light workspace launcher. The portable backend profile uses shard-local SQLite and keeps cloud adapters disabled unless explicitly enabled. The runtime launcher and local browser workspace are available from the repository root:
+
+```bash
+python -m scripts.phoenix doctor
+python -m scripts.phoenix start --workspace ./workspace --create-workspace
+```
+
+The local browser workspace is a development surface, not an OS security sandbox. Keep it bound to loopback and treat terminal execution as host-user execution. See [the runtime quickstart](docs/PHOENIX_RUNTIME_QUICKSTART.md), [platform architecture](docs/PLATFORM_ARCHITECTURE.md), and [production readiness gates](docs/PRODUCTION_READINESS.md).\n\nFull-device integration and administrative operations are a planned capability, not currently available. The design uses an unprivileged AI/user agent plus a narrowly scoped, explicitly approved OS broker; the AI itself must never run as root/Administrator. See [the device-control architecture](docs/DEVICE_CONTROL_ARCHITECTURE.md). Communications are also a planned first-class subsystem covering email, messaging, calls, voicemail, contacts, calendars, and follow-ups; see [the communications architecture](docs/COMMUNICATIONS_ARCHITECTURE.md).
+

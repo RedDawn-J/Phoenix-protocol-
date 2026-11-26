@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Scroll, Download, ShieldCheck, Plus, ArrowsClockwise, X, Robot, User,
   CircleNotch, Funnel, MagnifyingGlass, Check, SkipForward, PencilSimple, Eye,
@@ -315,7 +315,7 @@ export default function ChroniclePanel({ project }) {
     milestone: true, user_note: true, tool: false, proposed: true,
   });
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     if (!projectId) return;
     setLoading(true);
     try {
@@ -328,9 +328,9 @@ export default function ChroniclePanel({ project }) {
     } catch (_e) {
       setEntries([]);
     } finally { setLoading(false); }
-  }
+  }, [projectId, selectedSession]);
 
-  useEffect(() => { refresh(); }, [projectId, selectedSession]);
+  useEffect(() => { refresh(); }, [refresh]);
 
   // Debounce search query → 200ms
   useEffect(() => {

@@ -1,6 +1,6 @@
-"""Voice routes — Whisper STT + OpenAI TTS via the Universal Key.
+"""Voice routes — Whisper STT + OpenAI TTS via the BYOK.
 
-Both endpoints use `emergentintegrations` under the Emergent Universal LLM Key
+Both endpoints use the user's OpenAI API key through the public OpenAI SDK
 so the user gets voice-in / voice-out with zero extra credentials.
 
 - POST /api/voice/transcribe — multipart file upload, returns {text}.
@@ -10,14 +10,14 @@ The J persona uses `nova` by default (confident, warm, authoritative female — 
 """
 from __future__ import annotations
 
-import io
 import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from capabilities import require_capability
-from deps import EMERGENT_LLM_KEY, get_current_user
+from deps import get_current_user
+from llm_chain import resolve_byok
 
 log = logging.getLogger("gauntlet.voice")
 router = APIRouter()
@@ -46,26 +46,23 @@ async def voice_transcribe(
     fname = file.filename or "clip.webm"
     if "." not in fname:
         fname += ".webm"
-    buf = io.BytesIO(audio)
-    buf.name = fname
-
     require_capability("voice")
-    if not EMERGENT_LLM_KEY:
-        raise HTTPException(status_code=503, detail="Voice requires configured cloud speech credentials")
-    from emergentintegrations.llm.openai import OpenAISpeechToText
-    stt = OpenAISpeechToText(api_key=EMERGENT_LLM_KEY)
+    api_key = await resolve_byok(_user["user_id"], "openai")
+    if not api_key or isinstance(api_key, dict):
+        raise HTTPException(status_code=503, detail="Configure an OpenAI key in Settings to use speech transcription")
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(api_key=api_key, timeout=60)
     try:
-        resp = await stt.transcribe(
-            file=buf,
+        resp = await client.audio.transcriptions.create(
+            file=(fname, audio, file.content_type or "application/octet-stream"),
             model="whisper-1",
             response_format="json",
             language=language or None,
         )
     except Exception as e:  # noqa: BLE001
-        log.warning(f"whisper transcribe failed: {e}")
-        raise HTTPException(status_code=502, detail=f"transcribe failed: {e}") from e
-    text = getattr(resp, "text", None) or (resp.get("text") if isinstance(resp, dict) else "") or ""
-    return {"text": text.strip()}
+        log.warning(f"speech transcription failed: {e}")
+        raise HTTPException(status_code=502, detail="Speech transcription provider failed") from e
+    return {"text": (getattr(resp, "text", "") or "").strip()}
 
 
 @router.post("/voice/speak")
@@ -88,21 +85,23 @@ async def voice_speak(
     speed = max(0.5, min(speed, 2.0))
 
     require_capability("voice")
-    if not EMERGENT_LLM_KEY:
-        raise HTTPException(status_code=503, detail="Voice requires configured cloud speech credentials")
-    from emergentintegrations.llm.openai import OpenAITextToSpeech
-    tts = OpenAITextToSpeech(api_key=EMERGENT_LLM_KEY)
+    api_key = await resolve_byok(_user["user_id"], "openai")
+    if not api_key or isinstance(api_key, dict):
+        raise HTTPException(status_code=503, detail="Configure an OpenAI key in Settings to use speech synthesis")
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(api_key=api_key, timeout=60)
     try:
-        audio_bytes = await tts.generate_speech(
-            text=text,
+        audio = await client.audio.speech.create(
+            input=text,
             model="tts-1",
             voice=voice,
             response_format="mp3",
             speed=speed,
         )
+        audio_bytes = audio.content
     except Exception as e:  # noqa: BLE001
-        log.warning(f"tts failed: {e}")
-        raise HTTPException(status_code=502, detail=f"tts failed: {e}") from e
+        log.warning(f"speech synthesis failed: {e}")
+        raise HTTPException(status_code=502, detail="Speech synthesis provider failed") from e
 
     return Response(
         content=audio_bytes,

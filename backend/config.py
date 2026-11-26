@@ -68,7 +68,7 @@ def load_config() -> RuntimeConfig:
         mongo_url = None
         db_name = os.environ.get("DB_NAME", "jcloud_portable")
         emergent_llm_key = os.environ.get("EMERGENT_LLM_KEY", "")
-        override_password = os.environ.get("OVERRIDE_PASSWORD", "portable-override-not-configured")
+        override_password = os.environ.get("OVERRIDE_PASSWORD", "").strip()
     else:
         mongo_url = os.environ["MONGO_URL"]
         db_name = os.environ["DB_NAME"]
