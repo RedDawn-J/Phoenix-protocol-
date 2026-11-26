@@ -7,6 +7,7 @@ It does not claim to package the full FastAPI + React IDE yet.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import os
 import socket
@@ -30,14 +31,13 @@ def _is_loopback_endpoint(endpoint: str) -> bool:
         parsed = urlparse(endpoint)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             return False
-        return socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80),
-                                  type=socket.SOCK_STREAM) and all(
-            __import__("ipaddress").ip_address(item[4][0]).is_loopback
-            for item in socket.getaddrinfo(
-                parsed.hostname,
-                parsed.port or (443 if parsed.scheme == "https" else 80),
-                type=socket.SOCK_STREAM,
-            )
+        addresses = socket.getaddrinfo(
+            parsed.hostname,
+            parsed.port or (443 if parsed.scheme == "https" else 80),
+            type=socket.SOCK_STREAM,
+        )
+        return bool(addresses) and all(
+            ipaddress.ip_address(item[4][0]).is_loopback for item in addresses
         )
     except (OSError, ValueError):
         return False
@@ -83,7 +83,7 @@ def check_environment(workspace: Path, endpoint: str, model: str) -> list[dict[s
 def probe_model(endpoint: str, timeout: float = 2.0) -> tuple[bool, str]:
     """Probe the OpenAI-compatible /models route; never send workspace data."""
     parsed = urlparse(endpoint)
-    models_url = endpoint.rsplit("/", 1)[0] + "/models"
+    models_url = endpoint.rsplit("/chat/completions", 1)[0] + "/models"
     try:
         request = Request(models_url, headers={"Accept": "application/json"})
         with urlopen(request, timeout=timeout) as response:
