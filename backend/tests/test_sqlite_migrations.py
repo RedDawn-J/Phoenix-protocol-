@@ -129,7 +129,7 @@ async def test_sqlite_update_many_push_unset_and_aggregate(tmp_path):
     assert changed.modified_count == 2
 
     await collection.update_one({"_id": "1"}, {"$unset": {"history": ""}})
-    groups = collection.aggregate([
+    groups = await collection.aggregate([
         {"$match": {"status": "queued"}},
         {"$group": {"_id": "$team", "count": {"$sum": 1}, "attempts": {"$sum": "$attempts"}}},
         {"$sort": [("count", -1)]},
