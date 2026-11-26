@@ -115,11 +115,14 @@ def make_workspace_handler(
 
         def do_POST(self) -> None:
             route = urlparse(self.path).path
-            if route not in {"/api/command", "/api/file/write"}:
+            if route not in {"/api/chat", "/api/command", "/api/file/write"}:
                 super().do_POST()
                 return
             if not _local_request_allowed(self):
                 self._json(403, {"error": "Workspace actions require a same-origin loopback request"})
+                return
+            if route == "/api/chat":
+                super().do_POST()
                 return
             try:
                 payload = self._body()
