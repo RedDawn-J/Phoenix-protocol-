@@ -2,7 +2,7 @@ import axios from "axios";
 
 const runtimeConfig = typeof window !== "undefined" ? (window.__PHOENIX_CONFIG__ || {}) : {};
 const loopbackFallback = typeof window !== "undefined" &&
-  ["127.0.0.1", "localhost", "::1"].includes(window.location.hostname)
+  ["127.0.0.1", "localhost"].includes(window.location.hostname)
   ? `${window.location.protocol}//${window.location.hostname}:8001`
   : (typeof window !== "undefined" ? window.location.origin : "");
 const BACKEND_URL = (
