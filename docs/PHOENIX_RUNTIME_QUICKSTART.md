@@ -14,15 +14,15 @@ From the repository root:
 
 ```bash
 python -m scripts.phoenix doctor
-python -m scripts.phoenix doctor --run-tests
+python -m unittest tests.test_j_cli tests.test_j_ui tests.test_j_ui_workspace tests.test_j_forge tests.test_phoenix -v
 ```
 
-The doctor checks Python, required runtime files/modules and the selected workspace. The test option runs the dependency-free CLI, browser UI, Shards and J-Forge suites.
+The doctor checks Python, required runtime files/modules, the selected workspace and loopback-only model endpoint configuration. Add `--probe-model` to make a short request to the local model server. The test command runs the dependency-free CLI, browser UI, Shards, J-Forge and launcher suites.
 
 ## Start the browser workspace
 
 ```bash
-python -m scripts.phoenix ui --workspace ./workspace --host 127.0.0.1 --port 8765
+python -m scripts.phoenix start --workspace ./workspace --create-workspace --port 8765
 ```
 
 Open `http://127.0.0.1:8765`. Configure the local model with:
@@ -31,13 +31,13 @@ Open `http://127.0.0.1:8765`. Configure the local model with:
 - `J_CLI_MODEL` — model identifier (default `qwen2.5:7b`).
 - `J_CLI_API_KEY` — optional bearer token for the local endpoint.
 
-Or pass `--endpoint`, `--model`, and `--api-key` to the UI command. Bind only to loopback.
+Or pass `--endpoint`, `--model`, and `--api-key` to the `start` command. Bind only to loopback.
 
 ## Other runtime commands
 
 ```bash
-python -m scripts.phoenix chat --message "Explain this repository"
-python -m scripts.phoenix forge --help
+python -m scripts.j_cli --message "Explain this repository"
+python -m scripts.j_forge --help
 ```
 
 ## Security boundary
