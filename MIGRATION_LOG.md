@@ -175,3 +175,16 @@ _signed: **Phoenix engineering**_  `ci` `persistence` `verification`
 **Next step.** Confirm the latest workflow completes successfully, then expand persistence verification to interrupted migrations, concurrent access, and backup/restore.
 
 ---
+
+---
+
+## 2026-11-26T17:18:20+00:00 — Transactional portable persistence and recovery
+_signed: **Phoenix engineering**_  `sqlite` `persistence` `recovery` `tests`
+
+**Problem.** The portable SQLite adapter exposed a Mongo-shaped interface but had non-atomic read/modify/write operations, incomplete update/query coverage, a placeholder index method, and no database-level backup/restore path. Concurrent updates could lose increments, while unsupported query behavior could silently diverge from the cloud adapter.
+
+**Fix.** Reworked the adapter around transactional update/upsert/delete operations using `BEGIN IMMEDIATE`; added a documented operator subset with explicit errors for unsupported operations; implemented real JSON-expression indexes, multi-document writes, distinct queries, aggregation stages, and integrity-checked atomic backup/restore. Added regression tests for concurrent increments, nested queries/projections, update-many, aggregation, index validation, backup round-trip, and overwrite protection. Updated the platform architecture and production-readiness contract to state the exact supported surface and remaining release gates.
+
+**Why.** Portable persistence must be predictable, recoverable, and honest about compatibility. A narrow tested adapter is safer than a broad fake MongoDB clone. Atomic transactions and verified backups protect user data without coupling domain logic to SQLite.
+
+**Next step.** Verify the production CI run, add multi-process and crash-injection coverage, and then route further persistence work through the documented repository boundary.
