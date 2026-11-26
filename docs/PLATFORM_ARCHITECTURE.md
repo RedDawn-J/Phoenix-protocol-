@@ -154,6 +154,14 @@ This is a target ownership map, not permission to create empty packages. A packa
 - Workspace migration logs remain separate, append-only records under each workspace's `.gauntlet/migration.log.md`.
 - No schema or data migration is complete until its code, tests, and product migration-log entry land together.
 
+### Portable SQLite adapter contract
+
+The portable profile uses `backend/sqlite_store.py` as a bounded persistence adapter, not as a general MongoDB emulator. Its supported document-query contract is explicit: equality, nested field paths, `$or`/`$and`/`$nor`, `$in`/`$nin`, `$exists`, comparison operators, regular expressions, and bounded text substring search. Updates support replacement documents, `$set`, `$setOnInsert`, `$unset`, `$inc`, `$push`, and `$addToSet`; aggregation supports match, sort, skip, limit, project, count, and common group accumulators. Unsupported operators raise an error rather than silently succeeding.
+
+Mutating operations use SQLite transactions and `BEGIN IMMEDIATE` around read/modify/write sequences. A process-local re-entrant lock protects the shared connection; SQLite's busy timeout and write locking coordinate separate processes. Index creation emits real JSON-expression indexes after validating field identifiers. The adapter exposes atomic SQLite backup and verified restore helpers; restore refuses to overwrite an existing database unless the caller explicitly opts in.
+
+This contract is intentionally narrower than Motor/MongoDB. New route queries must be checked against the supported operator set and covered by adapter contract tests before they are used in portable mode. Do not widen the API with no-op compatibility methods.
+
 ### Cross-cutting quality gates
 
 Every bounded context owns unit and contract tests. Adapter tests verify provider/OS semantics. Integration tests exercise the real composition root and lifecycle. Security tests cover authorization, path confinement, secret redaction, prompt-injection boundaries, replay, cancellation, and audit. CI must run formatting/lint, static checks, unit/contract tests, backend integration tests, frontend production build, and package smoke tests without suppressing failures.
