@@ -47,3 +47,19 @@ The browser interface is a local control surface, not a sandbox. Shell commands 
 ## Current scope
 
 The launcher composes the existing CLI, browser workspace, bounded Shards interpreter and J-Forge tools. The full FastAPI/React portable profile is a separate integration target and must not be assumed to boot until its MongoDB-free startup, SQLite persistence, local authentication and model routing are covered by integration tests.
+
+## Portable IDE launcher (macOS / Linux)
+
+After installing `backend/requirements.txt` and building `frontend` with `yarn build`, start the full local IDE:
+
+```bash
+bash launch/phoenix.sh
+```
+
+Stop only the Phoenix-owned processes with:
+
+```bash
+bash launch/phoenix-stop.sh
+```
+
+The launcher binds the API and frontend to loopback, stores SQLite data under `data/`, logs under `logs/`, and uses Ollama at `127.0.0.1:11434` by default. Set `PHOENIX_PYTHON`, `PHOENIX_NODE`, `PHOENIX_BACKEND_PORT`, `PHOENIX_FRONTEND_PORT`, or `PHOENIX_BACKEND_URL` to override runtime choices. A local model server is optional; core IDE features remain available without it.
