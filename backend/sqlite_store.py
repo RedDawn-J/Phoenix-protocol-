@@ -11,7 +11,9 @@ import asyncio
 import hashlib
 import json
 import math
+import os
 import re
+import tempfile
 import sqlite3
 import threading
 import uuid
@@ -354,6 +356,91 @@ class SQLiteDatabase:
 
     def __getitem__(self, name: str) -> SQLiteCollection:
         return SQLiteCollection(self, name)
+
+    def backup_to(self, destination: Path) -> Path:
+        """Create a consistent, integrity-checked backup and publish it atomically."""
+        target = Path(destination).expanduser().resolve()
+        if target == self.path:
+            raise ValueError("Backup destination must differ from the live database")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
+        )
+        os.close(descriptor)
+        temporary = Path(temporary_name)
+        try:
+            with self.lock:
+                if self._closed:
+                    raise RuntimeError("Database is closed")
+                backup = sqlite3.connect(temporary)
+                try:
+                    self.conn.backup(backup)
+                    result = backup.execute("PRAGMA integrity_check").fetchone()[0]
+                    if result != "ok":
+                        raise sqlite3.DatabaseError(f"Backup integrity check failed: {result}")
+                    backup.commit()
+                finally:
+                    backup.close()
+            with temporary.open("rb") as stream:
+                os.fsync(stream.fileno())
+            os.replace(temporary, target)
+            try:
+                directory_fd = os.open(target.parent, os.O_RDONLY)
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+            except OSError:
+                pass
+            return target
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            raise
+
+    @staticmethod
+    def restore_from_backup(
+        source: Path,
+        destination: Path,
+        *,
+        replace_existing: bool = False,
+    ) -> Path:
+        """Restore a verified backup via a temporary file and atomic rename."""
+        backup_path = Path(source).expanduser().resolve()
+        target = Path(destination).expanduser().resolve()
+        if backup_path == target:
+            raise ValueError("Restore source and destination must differ")
+        if not backup_path.is_file():
+            raise FileNotFoundError(backup_path)
+        if target.exists() and not replace_existing:
+            raise FileExistsError(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix=f".{target.name}.", suffix=".restore", dir=target.parent
+        )
+        os.close(descriptor)
+        temporary = Path(temporary_name)
+        try:
+            source_connection = sqlite3.connect(f"file:{backup_path}?mode=ro", uri=True)
+            destination_connection = sqlite3.connect(temporary)
+            try:
+                integrity = source_connection.execute("PRAGMA integrity_check").fetchone()[0]
+                if integrity != "ok":
+                    raise sqlite3.DatabaseError(f"Restore source is corrupt: {integrity}")
+                source_connection.backup(destination_connection)
+                restored_integrity = destination_connection.execute("PRAGMA integrity_check").fetchone()[0]
+                if restored_integrity != "ok":
+                    raise sqlite3.DatabaseError(f"Restored database is corrupt: {restored_integrity}")
+                destination_connection.commit()
+            finally:
+                destination_connection.close()
+                source_connection.close()
+            with temporary.open("rb") as stream:
+                os.fsync(stream.fileno())
+            os.replace(temporary, target)
+            return target
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            raise
 
     def close(self) -> None:
         with self.lock:
