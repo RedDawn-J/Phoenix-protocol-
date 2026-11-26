@@ -150,3 +150,29 @@ async def test_sqlite_index_creation_is_real_and_validated(tmp_path):
     with pytest.raises(ValueError, match="Unsupported index field"):
         await collection.create_index([("user_id); DROP TABLE documents;--", 1)])
     client.close()
+
+
+def test_sqlite_backup_and_restore_roundtrip(tmp_path):
+    original = SQLiteClient(tmp_path / "live" / "phoenix.db")
+    original.db.projects.insert_one({"_id": "project-1", "name": "Preserved"})
+    backup_path = original.db.backup_to(tmp_path / "backups" / "phoenix.db")
+    original.close()
+
+    restored_path = SQLiteClient.restore_from_backup(
+        backup_path, tmp_path / "restored" / "phoenix.db"
+    )
+    restored = SQLiteClient(restored_path)
+    assert restored.db.projects.find_one({"_id": "project-1"})["name"] == "Preserved"
+    restored.close()
+
+
+def test_sqlite_restore_refuses_overwrite_without_explicit_opt_in(tmp_path):
+    client = SQLiteClient(tmp_path / "live.db")
+    backup_path = client.db.backup_to(tmp_path / "backup.db")
+    client.close()
+    target = tmp_path / "existing.db"
+    target.write_bytes(b"do not overwrite")
+
+    with pytest.raises(FileExistsError):
+        SQLiteClient.restore_from_backup(backup_path, target)
+    assert target.read_bytes() == b"do not overwrite"
