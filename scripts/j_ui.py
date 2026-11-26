@@ -117,7 +117,9 @@ def make_handler(
     call_model_fn: Callable[..., str] | None = None,
 ) -> type[BaseHTTPRequestHandler]:
     endpoint = _loopback_endpoint(endpoint)
-    model_caller = call_model_fn or call_model
+    def model_caller(*args: Any, **kwargs: Any) -> str:
+        caller = call_model_fn if call_model_fn is not None else call_model
+        return caller(*args, **kwargs)
     root = workspace.resolve()
 
     class Handler(BaseHTTPRequestHandler):
