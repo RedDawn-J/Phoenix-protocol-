@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
+import threading
 import uuid
 from pathlib import Path
 from typing import Any
@@ -42,9 +43,10 @@ class Cursor:
 
 
 class SQLiteCollection:
-    def __init__(self, conn: sqlite3.Connection, name: str):
+    def __init__(self, conn: sqlite3.Connection, name: str, lock: threading.RLock):
         self.conn = conn
         self.name = name
+        self.lock = lock
 
     async def create_index(self, *_args: Any, **_kwargs: Any) -> str:
         return "sqlite-json-index"
@@ -56,11 +58,12 @@ class SQLiteCollection:
         return type("InsertOneResult", (), {"inserted_id": stored["_id"]})()
 
     def _insert_sync(self, doc: dict[str, Any]) -> None:
-        self.conn.execute(
-            "insert into documents(collection, doc_id, body) values (?, ?, ?)",
-            (self.name, str(doc["_id"]), json.dumps(doc, default=str)),
-        )
-        self.conn.commit()
+        with self.lock:
+            self.conn.execute(
+                "insert into documents(collection, doc_id, body) values (?, ?, ?)",
+                (self.name, str(doc["_id"]), json.dumps(doc, default=str)),
+            )
+            self.conn.commit()
 
     async def find_one(self, filt: dict[str, Any], projection: dict[str, Any] | None = None, **kwargs: Any) -> dict[str, Any] | None:
         docs = await asyncio.to_thread(self._all_sync)
@@ -110,40 +113,47 @@ class SQLiteCollection:
         return type("DeleteResult", (), {"deleted_count": deleted})()
 
     def _all_sync(self) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            "select body from documents where collection = ?", (self.name,)
-        ).fetchall()
+        with self.lock:
+            rows = self.conn.execute(
+                "select body from documents where collection = ?", (self.name,)
+            ).fetchall()
         return [json.loads(row[0]) for row in rows]
 
     def _replace_sync(self, doc: dict[str, Any]) -> None:
-        self.conn.execute(
-            "update documents set body = ? where collection = ? and doc_id = ?",
-            (json.dumps(doc, default=str), self.name, str(doc["_id"])),
-        )
-        self.conn.commit()
+        with self.lock:
+            self.conn.execute(
+                "update documents set body = ? where collection = ? and doc_id = ?",
+                (json.dumps(doc, default=str), self.name, str(doc["_id"])),
+            )
+            self.conn.commit()
 
     def _delete_sync(self, doc_id: str) -> None:
-        self.conn.execute(
-            "delete from documents where collection = ? and doc_id = ?", (self.name, doc_id)
-        )
-        self.conn.commit()
+        with self.lock:
+            self.conn.execute(
+                "delete from documents where collection = ? and doc_id = ?", (self.name, doc_id)
+            )
+            self.conn.commit()
 
 
 class SQLiteDatabase:
     def __init__(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
         self.path = path
-        self.conn = sqlite3.connect(path, check_same_thread=False)
-        self.conn.execute(
-            "create table if not exists documents(collection text not null, doc_id text not null, body text not null, primary key(collection, doc_id))"
-        )
-        self.conn.commit()
+        self.lock = threading.RLock()
+        self.conn = sqlite3.connect(path, timeout=10.0, check_same_thread=False)
+        self.conn.execute("PRAGMA busy_timeout = 10000")
+        self.conn.execute("PRAGMA foreign_keys = ON")
+        self.conn.execute("PRAGMA journal_mode = WAL")
+        self.conn.execute("PRAGMA synchronous = FULL")
+        from migrations import apply_migrations
+
+        apply_migrations(self.conn)
 
     def __getattr__(self, name: str) -> SQLiteCollection:
-        return SQLiteCollection(self.conn, name)
+        return SQLiteCollection(self.conn, name, self.lock)
 
     def __getitem__(self, name: str) -> SQLiteCollection:
-        return SQLiteCollection(self.conn, name)
+        return SQLiteCollection(self.conn, name, self.lock)
 
 
 class SQLiteClient:
@@ -154,7 +164,8 @@ class SQLiteClient:
         return self.db
 
     def close(self) -> None:
-        self.db.conn.close()
+        with self.db.lock:
+            self.db.conn.close()
 
 
 def _matches(doc: dict[str, Any], filt: dict[str, Any]) -> bool:
