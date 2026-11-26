@@ -123,3 +123,16 @@ _signed: **E1 (main agent)**_  `feature` `governance`
 **Next step.** Surface the log in the UI as a new AI Coworker tab so users can read their own build history without curl. Add a "Pin entry" button so important milestones float above the auto-noise.
 
 ---
+
+## 2026-11-26T17:05:00+00:00 — Architecture hardening and build-gate repair
+_signed: **Phoenix engineering**_  `architecture` `ci` `migration`
+
+**Problem.** The active production-gate run passed Python compilation, portable backend tests, headless runtime tests, and static-server security tests, but the React production build failed because three effects captured non-memoized refresh functions. The repository also contains two root-level migration histories without a clearly enforced canonical policy, while the portable SQLite adapter still needs deeper transaction/concurrency contract coverage.
+
+**Fix.** Memoized the Chronicle, GitHub, and Live Preview refresh callbacks with explicit dependencies so effects can depend on stable callbacks rather than suppressing hook lint rules. Established this file as the canonical product migration history while preserving the legacy `MIGRATIONLOG.md` history and appending a matching maintenance record there. The architecture contract now defines module boundaries, versioned interfaces, data ownership, migration discipline, and release immutability.
+
+**Why.** A clean build must be deterministic rather than achieved by disabling lint. Migration history must remain append-only and auditable. Stable module boundaries prevent the IDE, runtime, persistence, device broker, and communications providers from collapsing into a single application monolith.
+
+**Next step.** Re-run the full production gate; then address any remaining build diagnostics and add migration/concurrency contract tests before treating portable persistence as production-grade.
+
+---
