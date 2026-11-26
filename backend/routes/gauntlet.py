@@ -37,7 +37,16 @@ async def governance_scan(payload: dict, user: dict = Depends(get_current_user))
 
 @router.post("/governance/override")
 async def governance_override(payload: dict, user: dict = Depends(get_current_user)):
-    """Verify password to permit a destructive op."""
+    """Verify password to permit a destructive op.
+
+    Portable installs ship with destructive overrides disabled. An operator
+    must explicitly configure a strong secret before this endpoint is enabled.
+    """
+    if not OVERRIDE_PASSWORD:
+        raise HTTPException(
+            status_code=503,
+            detail="Destructive override is disabled until OVERRIDE_PASSWORD is configured",
+        )
     if payload.get("password", "") != OVERRIDE_PASSWORD:
         await db.override_log.insert_one({
             "user_id": user["user_id"],
