@@ -22,6 +22,7 @@ from fastapi import APIRouter, FastAPI
 from starlette.middleware.cors import CORSMiddleware
 
 from deps import client, db, OWNER_USER_ID  # noqa: F401  (db imported to ensure indexes attach)
+from config import settings
 from core import chronicle as chron
 from core import ambient
 from core.ratelimit import set_owner_id as _set_rl_owner
@@ -61,12 +62,24 @@ async def root():
 terminal.register_ws(app)
 
 app.include_router(api)
+# Same-origin is the default for a bundled local desktop/web UI. Cross-origin
+# development hosts must be explicitly listed; wildcard + cookies is unsafe.
+_cors_origins = [
+    origin.strip()
+    for origin in os.environ.get(
+        "CORS_ORIGINS",
+        "http://127.0.0.1:3000,http://localhost:3000",
+    ).split(",")
+    if origin.strip()
+]
+if settings.portable and "*" in _cors_origins:
+    raise RuntimeError("Wildcard CORS origins are forbidden in the portable profile")
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
 
 
