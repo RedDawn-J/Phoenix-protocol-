@@ -99,7 +99,7 @@ const server = http.createServer((req, res) => {
         return;
       }
       const ext = path.extname(target).toLowerCase();
-      const cacheControl = target === filePath && /\\.(?:js|css|woff2?|ttf)$/.test(ext)
+      const cacheControl = target === filePath && /\.(?:js|css|woff2?|ttf)$/.test(ext)
         ? "public, max-age=31536000, immutable"
         : "no-cache";
       const body = ext === ".html"
