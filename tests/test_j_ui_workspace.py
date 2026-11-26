@@ -100,6 +100,16 @@ class LocalWorkspaceUiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(body["reply"], "local reply")
 
+    def test_chat_rejects_cross_origin_requests(self) -> None:
+        status, body = self._request(
+            "POST",
+            "/api/chat",
+            {"messages": [{"role": "user", "content": "hello"}]},
+            {"Origin": "http://attacker.example"},
+        )
+        self.assertEqual(status, 403)
+        self.assertIn("same-origin", body["error"])
+
 
 if __name__ == "__main__":
     unittest.main()
