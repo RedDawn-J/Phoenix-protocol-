@@ -39,4 +39,5 @@ jobs:
           tests.test_j_ui
           tests.test_j_ui_workspace
           tests.test_j_forge
+          tests.test_phoenix
           -v
