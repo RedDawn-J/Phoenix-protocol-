@@ -243,6 +243,7 @@ class SQLiteCollection:
         upserted_id = None
         with self._lock:
             with self._conn:
+                self._conn.execute("BEGIN IMMEDIATE")
                 rows = self._conn.execute(
                     "SELECT doc_id, body FROM documents WHERE collection = ?",
                     (self.name,),
@@ -282,6 +283,7 @@ class SQLiteCollection:
         deleted = 0
         with self._lock:
             with self._conn:
+                self._conn.execute("BEGIN IMMEDIATE")
                 rows = self._conn.execute(
                     "SELECT doc_id, body FROM documents WHERE collection = ?",
                     (self.name,),
@@ -406,18 +408,20 @@ def _unset_path(document: dict[str, Any], path: str) -> None:
 
 
 def _compare(actual: Any, expected: Any, operator: str) -> bool:
+    if operator == "$exists":
+        return (actual is not _MISSING) is bool(expected)
+    if operator == "$in":
+        return (None in expected) if actual is _MISSING else (
+            actual in expected or (isinstance(actual, list) and any(item in expected for item in actual))
+        )
+    if operator == "$nin":
+        return (None not in expected) if actual is _MISSING else actual not in expected
     if actual is _MISSING:
-        return operator == "$ne" and actual != expected
+        return operator == "$ne"
     if operator == "$eq":
         return actual == expected
     if operator == "$ne":
         return actual != expected
-    if operator == "$in":
-        return actual in expected or (isinstance(actual, list) and any(item in expected for item in actual))
-    if operator == "$nin":
-        return actual not in expected
-    if operator == "$exists":
-        return bool(expected)
     if operator in {"$gt", "$gte", "$lt", "$lte"}:
         if actual is None:
             return False
