@@ -57,6 +57,28 @@ function resolveRequestPath(rawUrl) {
   return resolved;
 }
 
+function backendUrl() {
+  const configured = process.env.PHOENIX_BACKEND_URL ||
+    process.env.REACT_APP_BACKEND_URL ||
+    `http://127.0.0.1:${process.env.PHOENIX_BACKEND_PORT || "8001"}`;
+  let parsed;
+  try {
+    parsed = new URL(configured);
+  } catch {
+    throw new Error("PHOENIX_BACKEND_URL must be an absolute HTTP(S) URL");
+  }
+  if (!["http:", "https:"].includes(parsed.protocol) || parsed.username || parsed.password) {
+    throw new Error("PHOENIX_BACKEND_URL must be a credential-free HTTP(S) URL");
+  }
+  return parsed.origin;
+}
+
+function injectRuntimeConfig(html) {
+  const config = JSON.stringify({ backendUrl: backendUrl() }).replace(/</g, "\\u003c");
+  const script = `<script>window.__PHOENIX_CONFIG__=${config};</script>`;
+  return html.replace("</head>", `${script}</head>`);
+}
+
 function send(res, status, headers, body) {
   res.writeHead(status, { ...SECURITY_HEADERS, ...headers });
   res.end(body);
@@ -80,10 +102,13 @@ const server = http.createServer((req, res) => {
       const cacheControl = target === filePath && /\\.(?:js|css|woff2?|ttf)$/.test(ext)
         ? "public, max-age=31536000, immutable"
         : "no-cache";
+      const body = ext === ".html"
+        ? Buffer.from(injectRuntimeConfig(data.toString("utf8")), "utf8")
+        : data;
       send(res, 200, {
         "Content-Type": MIME[ext] || "application/octet-stream",
         "Cache-Control": cacheControl,
-      }, data);
+      }, body);
     });
   });
 });
