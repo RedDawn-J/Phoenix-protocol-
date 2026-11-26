@@ -16,7 +16,7 @@ from urllib.parse import parse_qs, urlparse
 if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.j_cli import DEFAULT_ENDPOINT, DEFAULT_MODEL, HarnessError, _default_system_prompt
+from scripts.j_cli import DEFAULT_ENDPOINT, DEFAULT_MODEL, HarnessError, _default_system_prompt, call_model
 from scripts.j_ui import MAX_BODY_BYTES, MAX_FILE_BYTES, _loopback_endpoint, make_handler
 from http.server import ThreadingHTTPServer
 
@@ -83,7 +83,7 @@ def make_workspace_handler(
     workspace: Path,
     timeout: int,
 ) -> type:
-    base_handler = make_handler(endpoint, model, api_key, system_prompt, workspace, timeout)
+    base_handler = make_handler(endpoint, model, api_key, system_prompt, workspace, timeout, call_model_fn=call_model)
     root = workspace.resolve()
 
     class WorkspaceHandler(base_handler):
