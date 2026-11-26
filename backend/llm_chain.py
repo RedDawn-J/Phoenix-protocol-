@@ -124,14 +124,26 @@ async def _single_call(api_key_or_cfg: Any, provider: str, model: str,
             raise RuntimeError("Ollama default model not configured")
         return await _call_ollama(cfg["base_url"], chosen_model, system, user_text)
 
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
-    chat = LlmChat(
+    # LiteLLM provides a public, provider-neutral adapter for cloud providers.
+    # Portable mode never reaches this path: it forces local Ollama.
+    import litellm
+
+    response = await litellm.acompletion(
+        model=f"{provider}/{model}",
         api_key=api_key_or_cfg,
-        session_id=session_id,
-        system_message=system,
-    ).with_model(provider, model)
-    resp = await chat.send_message(UserMessage(text=user_text))
-    return resp if isinstance(resp, str) else str(resp)
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_text},
+        ],
+        timeout=120,
+    )
+    content = response.choices[0].message.content
+    if isinstance(content, list):
+        return "\n".join(
+            part.get("text", "") for part in content
+            if isinstance(part, dict) and part.get("type") == "text"
+        )
+    return content or ""
 
 
 async def _record_telemetry(user_id: str, meta: dict) -> None:
