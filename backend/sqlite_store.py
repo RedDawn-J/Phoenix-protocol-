@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import math
 import os
 import re
 import tempfile
@@ -420,7 +419,7 @@ class SQLiteDatabase:
         os.close(descriptor)
         temporary = Path(temporary_name)
         try:
-            source_connection = sqlite3.connect(f"file:{backup_path}?mode=ro", uri=True)
+            source_connection = sqlite3.connect(backup_path.as_uri() + "?mode=ro", uri=True)
             destination_connection = sqlite3.connect(temporary)
             try:
                 integrity = source_connection.execute("PRAGMA integrity_check").fetchone()[0]
