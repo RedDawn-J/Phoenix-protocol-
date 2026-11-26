@@ -162,3 +162,16 @@ _signed: **Phoenix engineering**_  `governance` `documentation`
 **Next step.** Keep both records synchronized with changes in their respective scopes and link each from the relevant engineering documentation.
 
 ---
+
+## 2026-11-26T17:12:27+00:00 — Migration regression suite wired into CI
+_signed: **Phoenix engineering**_  `ci` `persistence` `verification`
+
+**Problem.** The new SQLite migration regression tests existed but were not part of the production-gate command, and their import path was not explicit when collected by pytest.
+
+**Fix.** Added deterministic backend-root path setup to the migration test module and extended the production workflow to run the portable-profile suite together with the SQLite migration suite. The full backend history suite remains a separate release gate and is not represented as complete.
+
+**Why.** A migration runner without automated execution is only an unverified code path. The CI gate must test the schema initialization and upgrade behavior it is intended to protect.
+
+**Next step.** Confirm the latest workflow completes successfully, then expand persistence verification to interrupted migrations, concurrent access, and backup/restore.
+
+---
