@@ -83,7 +83,7 @@ def make_workspace_handler(
     workspace: Path,
     timeout: int,
 ) -> type:
-    base_handler = make_handler(endpoint, model, api_key, system_prompt, workspace, timeout, call_model_fn=call_model)
+    base_handler = make_handler(endpoint, model, api_key, system_prompt, workspace, timeout, call_model_fn=lambda *args, **kwargs: call_model(*args, **kwargs))
     root = workspace.resolve()
 
     class WorkspaceHandler(base_handler):
