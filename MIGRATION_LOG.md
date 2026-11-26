@@ -136,3 +136,16 @@ _signed: **Phoenix engineering**_  `architecture` `ci` `migration`
 **Next step.** Re-run the full production gate; then address any remaining build diagnostics and add migration/concurrency contract tests before treating portable persistence as production-grade.
 
 ---
+
+## 2026-11-26T17:12:00+00:00 — Versioned SQLite schema migrations
+_signed: **Phoenix engineering**_  `persistence` `sqlite` `migration`
+
+**Problem.** The portable SQLite adapter created its document table opportunistically at connection startup. It had no schema version, immutable migration checksum, or explicit rejection of databases created by a newer build. The shared SQLite connection also had no process-local serialization lock despite being used across worker threads.
+
+**Fix.** Added a complete migration runner and initial versioned document-store migration. Fresh databases are initialized transactionally; existing unversioned document stores are adopted without dropping data. Applied migration names/checksums are recorded and verified, future schema versions fail closed, and the connection now uses a re-entrant lock plus explicit SQLite durability/concurrency pragmas. Added regression tests for fresh initialization, legacy adoption, checksum drift, and future-version rejection.
+
+**Why.** Portable user data must survive upgrades without silent schema drift. Schema evolution needs reproducible, reviewable history and safe startup behavior; SQLite access must serialize use of its shared connection.
+
+**Next step.** Run the backend and full production gate against the migration runner, then add backup/restore and interrupted-upgrade tests before claiming portable persistence is production ready.
+
+---
