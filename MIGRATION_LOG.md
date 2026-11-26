@@ -188,3 +188,16 @@ _signed: **Phoenix engineering**_  `sqlite` `persistence` `recovery` `tests`
 **Why.** Portable persistence must be predictable, recoverable, and honest about compatibility. A narrow tested adapter is safer than a broad fake MongoDB clone. Atomic transactions and verified backups protect user data without coupling domain logic to SQLite.
 
 **Next step.** Verify the production CI run, add multi-process and crash-injection coverage, and then route further persistence work through the documented repository boundary.
+
+---
+
+## 2026-11-26T17:20:02.873+00:00 — Persistence recovery and concurrency regression coverage
+_signed: **Phoenix engineering**_  `tests` `sqlite` `migration`
+
+**Problem.** Transactional persistence changes needed proof beyond same-process concurrency. Migration failure must leave no partially created schema objects or applied-version records, and restore must reject corrupt input without publishing a destination file.
+
+**Fix.** Added multi-process increment stress coverage using four independent SQLite clients, migration DDL rollback coverage, and corrupt-backup rejection coverage. The tests exercise SQLite write-lock coordination, migration transaction rollback, and atomic restore publication.
+
+**Why.** Correctness must hold across process boundaries and failed upgrades, not only in a single happy-path test. A restore operation must never replace a valid database with unverified bytes.
+
+**Next step.** Wait for the latest production-gate run and repair any failures; add kill/crash injection and platform-level backup verification before marking recovery production-ready.
