@@ -178,3 +178,73 @@ def test_sqlite_restore_refuses_overwrite_without_explicit_opt_in(tmp_path):
     with pytest.raises(FileExistsError):
         SQLiteClient.restore_from_backup(backup_path, target)
     assert target.read_bytes() == b"do not overwrite"
+
+
+def _run_process_increments(database_path: str, count: int) -> None:
+    import asyncio
+    from pathlib import Path
+
+    async def run() -> None:
+        client = SQLiteClient(Path(database_path))
+        try:
+            await asyncio.gather(*[
+                client.db.counters.update_one({"_id": "global"}, {"$inc": {"value": 1}})
+                for _ in range(count)
+            ])
+        finally:
+            client.close()
+
+    asyncio.run(run())
+
+
+def test_sqlite_write_lock_coordinates_multiple_processes(tmp_path):
+    import multiprocessing
+
+    database_path = tmp_path / "multi-process.db"
+    client = SQLiteClient(database_path)
+    import asyncio
+    asyncio.run(client.db.counters.insert_one({"_id": "global", "value": 0}))
+    client.close()
+
+    context = multiprocessing.get_context("spawn")
+    with context.Pool(processes=4) as pool:
+        pool.starmap(_run_process_increments, [(str(database_path), 15)] * 4)
+
+    reopened = SQLiteClient(database_path)
+    import asyncio
+    result = asyncio.run(reopened.db.counters.find_one({"_id": "global"}))
+    reopened.close()
+    assert result["value"] == 60
+
+
+def test_failed_migration_rolls_back_ddl_and_version_record(tmp_path):
+    connection = sqlite3.connect(tmp_path / "rollback.db")
+    migration = Migration(
+        1,
+        "must_rollback",
+        (
+            "CREATE TABLE transient_data (id INTEGER PRIMARY KEY)",
+            "THIS IS NOT VALID SQL",
+        ),
+    )
+
+    with pytest.raises(sqlite3.OperationalError):
+        apply_migrations(connection, (migration,))
+
+    table = connection.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'transient_data'"
+    ).fetchone()
+    versions = connection.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0]
+    assert table is None
+    assert versions == 0
+    connection.close()
+
+
+def test_restore_rejects_corrupt_backup_without_creating_destination(tmp_path):
+    corrupt = tmp_path / "corrupt.db"
+    corrupt.write_bytes(b"not a SQLite database")
+    destination = tmp_path / "recovery" / "restored.db"
+
+    with pytest.raises(sqlite3.DatabaseError):
+        SQLiteClient.restore_from_backup(corrupt, destination)
+    assert not destination.exists()
